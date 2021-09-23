@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DevProxy": {
+      "commandName": "Project",
+      "commandLineArgs": "8888"
+    }
+  }
+}

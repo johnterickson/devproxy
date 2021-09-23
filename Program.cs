@@ -1,13 +1,29 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy;
+using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Models;
+using Titanium.Web.Proxy.Network;
 
 namespace DevProxy
 {
+    public enum PluginResult
+    {
+        Continue,
+        Stop
+    }
+
+    public interface Plugin
+    {
+        Task<PluginResult> BeforeRequestAsync(SessionEventArgs e);
+        Task<PluginResult> BeforeResponseAsync(SessionEventArgs e);
+    }
+
     class Program
     {
         static void Main(string[] args)
@@ -17,8 +33,12 @@ namespace DevProxy
             var proxy = new ProxyServer();
 
             var seen = new ConcurrentDictionary<string,Uri>();
+            
+            var plugins = new List<Plugin>();
+            plugins.Add(new BlobStoreCachePlugin());
+            plugins.Add(new AzureDevOpsAuthPlugin());
 
-            proxy.BeforeRequest += (sender, e) => {
+            proxy.BeforeRequest += async (sender, e) => {
 
                 var url = new Uri(e.HttpClient.Request.Url);
                 Console.WriteLine(url);
@@ -27,33 +47,27 @@ namespace DevProxy
                 //     Console.WriteLine($" {header.Name}: {header.Value}");
                 // }
 
-                if (url.Host.EndsWith("core.windows.net"))
+                foreach(var plugin in plugins)
                 {
-                    if (seen.TryAdd(url.AbsolutePath, url))
+                    var result = await plugin.BeforeRequestAsync(e);
+                    if(result == PluginResult.Stop)
                     {
-                        e.GenericResponse("", HttpStatusCode.ServiceUnavailable, new Dictionary<string, HttpHeader>());
+                        return;
                     }
-                    else 
+                }
+            };
+
+            proxy.BeforeResponse += async (sender, e) => {
+
+                foreach(var plugin in plugins)
+                {
+                    var result = await plugin.BeforeResponseAsync(e);
+                    if(result == PluginResult.Stop)
                     {
-                        Console.WriteLine($"Retry of {url.AbsolutePath}");
+                        return;
                     }
                 }
 
-                // bool authAdded = false;
-                // if (url.Host.EndsWith("dev.azure.com") || url.Host.EndsWith("visualstudio.com"))
-                // {
-                //     if (e.HttpClient.Request.Headers.All(h => h.Name != "Authorization"))
-                //     {
-                //         e.HttpClient.Request.Headers.AddHeader("Authorization", $"Bearer {accessToken}");
-                //         authAdded = true;
-                //     }
-                // }
-
-
-                return Task.CompletedTask;
-            };
-
-            proxy.BeforeResponse += (sender, e) => {
                 if (e.HttpClient.Response.StatusCode == 303)
                 {
                     Console.WriteLine($"{e.HttpClient.Request.Url} {e.HttpClient.Response.StatusCode} {e.HttpClient.Response.Headers.GetFirstHeader("Location").Value}");
@@ -62,12 +76,21 @@ namespace DevProxy
                 {
                     Console.WriteLine($"{e.HttpClient.Request.Url} {e.HttpClient.Response.StatusCode}");
                 }
-                return Task.CompletedTask;
             };
 
             //  openssl pkcs7 -in titanium.p7b -inform DER -print_certs -out titanium.pem
-            proxy.CertificateManager.CreateRootCertificate(persistToFile: true);
-            proxy.CertificateManager.TrustRootCertificateAsAdmin(machineTrusted: true);
+            proxy.CertificateManager.CertificateStorage = new UserProfileCertificateStorage();
+            proxy.CertificateManager.RootCertificateName = Environment.ExpandEnvironmentVariables("DevProxy for %USERNAME%");
+            proxy.CertificateManager.RootCertificateIssuerName = "DevProxy";
+            proxy.CertificateManager.PfxFilePath = "devproxy.pfx";
+            proxy.CertificateManager.PfxPassword = "devproxy";
+            if (null == proxy.CertificateManager.LoadRootCertificate())
+            {
+                
+                proxy.CertificateManager.EnsureRootCertificate();
+            }
+            //proxy.CertificateManager.CreateRootCertificate(persistToFile: true);
+            //proxy.CertificateManager.TrustRootCertificateAsAdmin(machineTrusted: true);
 
             var explicitEndPoint = new ExplicitProxyEndPoint(IPAddress.Loopback, proxyPort, decryptSsl: true);
             proxy.AddEndPoint(explicitEndPoint);
@@ -77,5 +100,78 @@ namespace DevProxy
 
             Console.ReadKey();
         }
+
+        private class UserProfileCertificateStorage : ICertificateCache
+        {
+            private readonly string folderPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".devproxy",
+                "certs"
+            );
+
+            public void Clear()
+            {
+                if (Directory.Exists(folderPath))
+                {
+                    foreach(var f in Directory.GetFiles(folderPath))
+                    {
+                        File.Delete(f);
+                    }
+                }
+            }
+
+            public X509Certificate2 LoadCertificate(string subjectName, X509KeyStorageFlags storageFlags)
+            {
+                var path = Path.Combine(folderPath, $"notroot.{subjectName}.pfx");
+                return loadCertificate(path, string.Empty, storageFlags);
+            }
+
+            public X509Certificate2 LoadRootCertificate(string pathOrName, string password, X509KeyStorageFlags storageFlags)
+            {
+                var path = Path.Combine(folderPath, $"root.{pathOrName}");
+                return loadCertificate(path, password, storageFlags);
+            }
+
+            public void SaveCertificate(string subjectName, X509Certificate2 certificate)
+            {
+                Directory.CreateDirectory(folderPath);
+                var path = Path.Combine(folderPath, $"notroot.{subjectName}.pfx");
+                byte[] exported = certificate.Export(X509ContentType.Pkcs12);
+                File.WriteAllBytes(path, exported);
+            }
+
+            public void SaveRootCertificate(string pathOrName, string password, X509Certificate2 certificate)
+            {
+                Directory.CreateDirectory(folderPath);
+                var path = Path.Combine(folderPath, $"root.{pathOrName}");
+                byte[] exported = certificate.Export(X509ContentType.Pkcs12, password);
+                File.WriteAllBytes(path, exported);
+            }
+
+
+            private X509Certificate2 loadCertificate(string path, string password, X509KeyStorageFlags storageFlags)
+            {
+                byte[] exported;
+
+                if (!File.Exists(path))
+                {
+                    return null;
+                }
+
+                try
+                {
+                    exported = File.ReadAllBytes(path);
+                }
+                catch (IOException)
+                {
+                    // file or directory not found
+                    return null;
+                }
+
+                return new X509Certificate2(exported, password, storageFlags);
+            }
+
+        }
     }
+
 }

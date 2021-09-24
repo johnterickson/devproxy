@@ -99,16 +99,25 @@ namespace DevProxy
             proxy.CertificateManager.PfxPassword = "devproxy";
             if (null == proxy.CertificateManager.LoadRootCertificate())
             {
-
                 proxy.CertificateManager.EnsureRootCertificate();
             }
             //proxy.CertificateManager.CreateRootCertificate(persistToFile: true);
             //proxy.CertificateManager.TrustRootCertificateAsAdmin(machineTrusted: true);
 
+            string proxyPassword = "Password123";
+            proxy.ProxyBasicAuthenticateFunc = (args, username, password) => {
+                return Task.FromResult(username == proxyPassword || password == proxyPassword);
+            };
+
             var explicitEndPoint = new ExplicitProxyEndPoint(IPAddress.Loopback, proxyPort, decryptSsl: true);
             proxy.AddEndPoint(explicitEndPoint);
             proxy.Start();
 
+            Console.WriteLine($"HTTP_PROXY=http://{proxyPassword}@localhost:{proxyPort}");
+            Console.WriteLine( "For git:");
+            Console.WriteLine( "  openssl pkcs12 -in root.devproxy.pfx -out root.devproxy.pem -nokeys");
+            Console.WriteLine($"  git config http.proxy=http://{proxyPassword}@localhost:{proxyPort}");
+            Console.WriteLine( "  git config --add http.sslcainfoC:/Users/jerick/.devproxy/certs/root.devproxy.pem");
             Console.WriteLine("Started!");
 
             while (true)

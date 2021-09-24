@@ -1,14 +1,12 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Models;
-using Titanium.Web.Proxy.Network;
 
 namespace DevProxy
 {
@@ -18,10 +16,22 @@ namespace DevProxy
         Stop
     }
 
-    public interface Plugin
+    public abstract class Plugin
     {
-        Task<PluginResult> BeforeRequestAsync(SessionEventArgs e);
-        Task<PluginResult> BeforeResponseAsync(SessionEventArgs e);
+        public abstract Task<PluginResult> BeforeRequestAsync(SessionEventArgs e);
+        public abstract Task<PluginResult> BeforeResponseAsync(SessionEventArgs e);
+
+        protected T GetRequestData<T>(SessionEventArgs e) where T : class
+        {
+            return (T)GetAllData(e)[this];
+        }
+
+        protected void SetRequestData<T>(SessionEventArgs e, T data) where T : class
+        {
+            GetAllData(e)[this] = data;
+        }
+        
+        private Dictionary<Plugin,object> GetAllData(SessionEventArgs e) => (Dictionary<Plugin,object>)e.UserData;
     }
 
     class Program
@@ -29,16 +39,18 @@ namespace DevProxy
         static void Main(string[] args)
         {
             int proxyPort = int.Parse(args[0]);
-            
+
             var proxy = new ProxyServer();
 
-            var seen = new ConcurrentDictionary<string,Uri>();
-            
+            var seen = new ConcurrentDictionary<string, Uri>();
+
             var plugins = new List<Plugin>();
             plugins.Add(new BlobStoreCachePlugin());
             plugins.Add(new AzureDevOpsAuthPlugin());
 
-            proxy.BeforeRequest += async (sender, e) => {
+            proxy.BeforeRequest += async (sender, e) =>
+            {
+                e.UserData = new Dictionary<Plugin, object>();
 
                 var url = new Uri(e.HttpClient.Request.Url);
                 Console.WriteLine(url);
@@ -47,22 +59,23 @@ namespace DevProxy
                 //     Console.WriteLine($" {header.Name}: {header.Value}");
                 // }
 
-                foreach(var plugin in plugins)
+                foreach (var plugin in plugins)
                 {
                     var result = await plugin.BeforeRequestAsync(e);
-                    if(result == PluginResult.Stop)
+                    if (result == PluginResult.Stop)
                     {
                         return;
                     }
                 }
             };
 
-            proxy.BeforeResponse += async (sender, e) => {
+            proxy.BeforeResponse += async (sender, e) =>
+            {
 
-                foreach(var plugin in plugins)
+                foreach (var plugin in plugins)
                 {
                     var result = await plugin.BeforeResponseAsync(e);
-                    if(result == PluginResult.Stop)
+                    if (result == PluginResult.Stop)
                     {
                         return;
                     }
@@ -86,7 +99,7 @@ namespace DevProxy
             proxy.CertificateManager.PfxPassword = "devproxy";
             if (null == proxy.CertificateManager.LoadRootCertificate())
             {
-                
+
                 proxy.CertificateManager.EnsureRootCertificate();
             }
             //proxy.CertificateManager.CreateRootCertificate(persistToFile: true);
@@ -98,80 +111,12 @@ namespace DevProxy
 
             Console.WriteLine("Started!");
 
-            Console.ReadKey();
+            while (true)
+            {
+                Thread.Sleep(TimeSpan.FromMinutes(1));
+            }
         }
 
-        private class UserProfileCertificateStorage : ICertificateCache
-        {
-            private readonly string folderPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".devproxy",
-                "certs"
-            );
 
-            public void Clear()
-            {
-                if (Directory.Exists(folderPath))
-                {
-                    foreach(var f in Directory.GetFiles(folderPath))
-                    {
-                        File.Delete(f);
-                    }
-                }
-            }
-
-            public X509Certificate2 LoadCertificate(string subjectName, X509KeyStorageFlags storageFlags)
-            {
-                var path = Path.Combine(folderPath, $"notroot.{subjectName}.pfx");
-                return loadCertificate(path, string.Empty, storageFlags);
-            }
-
-            public X509Certificate2 LoadRootCertificate(string pathOrName, string password, X509KeyStorageFlags storageFlags)
-            {
-                var path = Path.Combine(folderPath, $"root.{pathOrName}");
-                return loadCertificate(path, password, storageFlags);
-            }
-
-            public void SaveCertificate(string subjectName, X509Certificate2 certificate)
-            {
-                Directory.CreateDirectory(folderPath);
-                var path = Path.Combine(folderPath, $"notroot.{subjectName}.pfx");
-                byte[] exported = certificate.Export(X509ContentType.Pkcs12);
-                File.WriteAllBytes(path, exported);
-            }
-
-            public void SaveRootCertificate(string pathOrName, string password, X509Certificate2 certificate)
-            {
-                Directory.CreateDirectory(folderPath);
-                var path = Path.Combine(folderPath, $"root.{pathOrName}");
-                byte[] exported = certificate.Export(X509ContentType.Pkcs12, password);
-                File.WriteAllBytes(path, exported);
-            }
-
-
-            private X509Certificate2 loadCertificate(string path, string password, X509KeyStorageFlags storageFlags)
-            {
-                byte[] exported;
-
-                if (!File.Exists(path))
-                {
-                    return null;
-                }
-
-                try
-                {
-                    exported = File.ReadAllBytes(path);
-                }
-                catch (IOException)
-                {
-                    // file or directory not found
-                    return null;
-                }
-
-                return new X509Certificate2(exported, password, storageFlags);
-            }
-
-        }
     }
-
 }

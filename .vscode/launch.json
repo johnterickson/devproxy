@@ -10,11 +10,12 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/bin/Debug/netcoreapp3.1/DevProxy.dll",
-            "args": [],
+            "program": "${workspaceFolder}/bin/Debug/net5.0/DevProxy.dll",
+            "args": ["8888"],
             "cwd": "${workspaceFolder}",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
-            "console": "internalConsole",
+            // "console": "externalTerminal",
+            "console": "externalTerminal",
             "stopAtEntry": false
         },
         {

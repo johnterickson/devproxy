@@ -12,6 +12,11 @@ using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy
 {
+    // Hopefully Kyle will fix this or I can shell out to his tool??
+    /*
+        Example tested API:
+        Invoke-WebRequest -Proxy http://localhost:8888 -Uri https://vsblob.dev.azure.com/mseng/_apis/blob/blobs/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00/url
+    */
     public class AzureDevOpsAuthPlugin : Plugin
     {
         private const string NativeClientRedirect = "https://login.microsoftonline.com/common/oauth2/nativeclient";
@@ -33,7 +38,7 @@ namespace DevProxy
             return msalToken.AccessToken;
         }
 
-        public async Task<PluginResult> BeforeRequestAsync(SessionEventArgs e)
+        public override async Task<PluginResult> BeforeRequestAsync(SessionEventArgs e)
         {
             var url = new Uri(e.HttpClient.Request.Url);
             if (url.Host.EndsWith("dev.azure.com") || url.Host.EndsWith("visualstudio.com"))
@@ -48,7 +53,7 @@ namespace DevProxy
             return PluginResult.Continue;
         }
 
-        public Task<PluginResult> BeforeResponseAsync(SessionEventArgs e)
+        public override Task<PluginResult> BeforeResponseAsync(SessionEventArgs e)
         {
             return Task.FromResult(PluginResult.Continue);
         }

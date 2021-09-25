@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy
 {
@@ -38,22 +37,22 @@ namespace DevProxy
             return msalToken.AccessToken;
         }
 
-        public override async Task<PluginResult> BeforeRequestAsync(SessionEventArgs e)
+        public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
         {
-            var url = new Uri(e.HttpClient.Request.Url);
+            var url = new Uri(r.Request.Url);
             if (url.Host.EndsWith("dev.azure.com") || url.Host.EndsWith("visualstudio.com"))
             {
-                if (e.HttpClient.Request.Headers.All(h => h.Name != "Authorization"))
+                if (r.Request.Headers.All(h => h.Name != "Authorization"))
                 {
                     var token = await GetTokenAsync(CancellationToken.None);
-                    e.HttpClient.Request.Headers.AddHeader("Authorization", $"Bearer {token}");
+                    r.Request.Headers.AddHeader("Authorization", $"Bearer {token}");
                 }
             }
 
             return PluginResult.Continue;
         }
 
-        public override Task<PluginResult> BeforeResponseAsync(SessionEventArgs e)
+        public override Task<PluginResult> BeforeResponseAsync(PluginRequest r)
         {
             return Task.FromResult(PluginResult.Continue);
         }

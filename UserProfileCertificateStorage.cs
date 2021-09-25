@@ -34,8 +34,7 @@ namespace DevProxy
 
         public X509Certificate2 LoadRootCertificate(string pathOrName, string password, X509KeyStorageFlags storageFlags)
         {
-            var path = Path.Combine(folderPath, $"root.{pathOrName}");
-            return loadCertificate(path, password, storageFlags);
+            return loadCertificate(GetRootCertPath(pathOrName), password, storageFlags);
         }
 
         public void SaveCertificate(string subjectName, X509Certificate2 certificate)
@@ -49,10 +48,12 @@ namespace DevProxy
         public void SaveRootCertificate(string pathOrName, string password, X509Certificate2 certificate)
         {
             Directory.CreateDirectory(folderPath);
-            var path = Path.Combine(folderPath, $"root.{pathOrName}");
+            var path = GetRootCertPath(pathOrName);
             byte[] exported = certificate.Export(X509ContentType.Pkcs12, password);
             File.WriteAllBytes(path, exported);
         }
+
+        public string GetRootCertPath(string pathOrName) => Path.Combine(folderPath, $"root.{pathOrName}");
 
 
         private X509Certificate2 loadCertificate(string path, string password, X509KeyStorageFlags storageFlags)

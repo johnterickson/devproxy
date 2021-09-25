@@ -15,16 +15,21 @@ using BuildXL.Cache.ContentStore.Interfaces.Time;
 using BuildXL.Cache.ContentStore.Interfaces.Tracing;
 using BuildXL.Cache.ContentStore.Interfaces.Utils;
 using BuildXL.Cache.ContentStore.Stores;
-using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
 {
+    public class RequestInfo
+    {
+        public ContentHash Hash;
+        public Context Context;
+    }
+
     /*
         Example tested API:
         Invoke-WebRequest -Proxy http://localhost:8888 -Uri "Invoke-WebRequest -Proxy http://localhost:8888 -Uri "https://4fdvsblobprodwcus012.blob.core.windows.net/b-0efb4611d5654cd19a647d6cb6d7d5f0/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00.blob?sv=2019-07-07&sr=b&si=1&sig=REDACTED&spr=https&se=2021-09-24T00%3A03%3A33Z&rscl=x-e2eid-36b718fd-c0064fe3-9c4a9a47-fe7890a2-session-36b718fd-c0064fe3-9c4a9a47-fe7890a2"
     */
-    public class BlobStoreCachePlugin : Plugin
+    public class BlobStoreCachePlugin : Plugin<RequestInfo>
     {
         private static readonly Regex[] _urlRegexes = new[]
         {
@@ -57,15 +62,9 @@ namespace DevProxy
             _contentSession = _contentStore.CreateSession(context, "devproxy", ImplicitPin.None).Session;
         }
 
-        class RequestInfo
+        public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
         {
-            public ContentHash Hash;
-            public Context Context;
-        }
-
-        public override async Task<PluginResult> BeforeRequestAsync(SessionEventArgs e)
-        {
-            var url = new Uri(e.HttpClient.Request.Url);
+            var url = new Uri(r.Args.HttpClient.Request.Url);
             Match match = _urlRegexes.Select(u => u.Match(url.AbsoluteUri)).FirstOrDefault(m => m.Success);
             if (match == null || match.Groups.Count != 2)
             {
@@ -94,12 +93,11 @@ namespace DevProxy
 
             ContentHash hash = ContentHash.FromFixedBytes(hashType, new ReadOnlyFixedBytes(hashBytes, 33, 0));
 
-            var info = new RequestInfo() { 
+            r.Data = new RequestInfo()
+            {
                 Hash = hash,
                 Context = new Context(url.AbsoluteUri.ToString(), null)
             };
-
-            SetRequestData(e, info);
 
             Console.WriteLine($"Found blob request {hash.Serialize()}.");
 
@@ -107,7 +105,7 @@ namespace DevProxy
             // TODO ranges
 
             var streamResult = await _contentSession.OpenStreamAsync(
-                info.Context,
+                r.Data.Context,
                 hash,
                 CancellationToken.None);
             if (streamResult.Succeeded)
@@ -122,7 +120,7 @@ namespace DevProxy
                         new HttpHeader("Content-Length", body.Length.ToString()),
                         new HttpHeader($"X-DevProxy-{this.GetType().Name}-Cache", "HIT"),
                     };
-                    e.GenericResponse(body, HttpStatusCode.OK, headers, closeServerConnection: false);
+                    r.Args.GenericResponse(body, HttpStatusCode.OK, headers, closeServerConnection: false);
                 }
                 return PluginResult.Stop;
             }
@@ -133,15 +131,15 @@ namespace DevProxy
             }
         }
 
-        public override async Task<PluginResult> BeforeResponseAsync(SessionEventArgs e)
+        public override async Task<PluginResult> BeforeResponseAsync(PluginRequest r)
         {
-            e.HttpClient.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
+            r.Args.HttpClient.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
 
-            var info = GetRequestData<RequestInfo>(e);
-            if (info != null && e.HttpClient.Response.StatusCode >= 200 && e.HttpClient.Response.StatusCode < 300) {
-                using (var ms = new MemoryStream(await e.GetResponseBody()))
+            if (r.Data != null && r.Response.StatusCode >= 200 && r.Response.StatusCode < 300)
+            {
+                using (var ms = new MemoryStream(await r.Args.GetResponseBody()))
                 {
-                    await _contentSession.PutStreamAsync(info.Context, info.Hash, ms, CancellationToken.None);
+                    await _contentSession.PutStreamAsync(r.Data.Context, r.Data.Hash, ms, CancellationToken.None);
                 }
             }
 

@@ -1,13 +1,16 @@
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Extensions.Msal;
+using Microsoft.VisualStudio.Services.Content.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
 {
@@ -16,25 +19,48 @@ namespace DevProxy
         Example tested API:
         Invoke-WebRequest -Proxy http://localhost:8888 -Uri https://vsblob.dev.azure.com/mseng/_apis/blob/blobs/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00/url
     */
-    public class AzureDevOpsAuthPlugin : Plugin
+    public class AzureDevOpsAuthPlugin : Plugin<AzureDevOpsAuthPlugin.Token>
     {
+        public class Token
+        {
+            public readonly TokenType TokenType;
+            public readonly string TokenValue;
+            public readonly string TokenValueSHA512;
+
+            public Token(TokenType tokenType, string tokenValue)
+            {
+                TokenType = tokenType;
+                TokenValue = tokenValue;
+                TokenValueSHA512 = HasherHelper.HashSecret(tokenValue);
+            }
+        }
+
         private const string NativeClientRedirect = "https://login.microsoftonline.com/common/oauth2/nativeclient";
         private const string Resource = "499b84ac-1321-427f-aa17-267ca6975798/.default";
         private const string ClientId = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1";
         private const string Authority = "https://login.microsoftonline.com/organizations";
+        
 
-        private async Task<string> GetTokenAsync(CancellationToken cancellationToken)
+        public enum TokenType
+        {
+            None,
+            ExistingBearer,
+            EnvVar_AZURE_DEVOPS_TOKEN,
+            WindowsIntegratedAuth
+        }
+
+        private async Task<Token> GetTokenAsync(CancellationToken cancellationToken)
         {
             string token = Environment.GetEnvironmentVariable("AZURE_DEVOPS_TOKEN");
             if (token != null)
             {
-                return token;
+                return new Token(TokenType.EnvVar_AZURE_DEVOPS_TOKEN, token);
             }
 
             var msalToken = await AcquireTokenWithWindowsIntegratedAuth(cancellationToken);
 
             //var msalToken = await AcquireTokenSilentlyAsync(token);
-            return msalToken.AccessToken;
+            return new Token(TokenType.WindowsIntegratedAuth, msalToken.AccessToken);
         }
 
         public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
@@ -42,10 +68,15 @@ namespace DevProxy
             var url = new Uri(r.Request.Url);
             if (url.Host.EndsWith("dev.azure.com") || url.Host.EndsWith("visualstudio.com"))
             {
-                if (r.Request.Headers.All(h => h.Name != "Authorization"))
+                var authzHeader = r.Request.Headers.GetFirstHeader("Authorization");
+                if (authzHeader == null)
                 {
-                    var token = await GetTokenAsync(CancellationToken.None);
-                    r.Request.Headers.AddHeader("Authorization", $"Bearer {token}");
+                    r.Data = await GetTokenAsync(CancellationToken.None);
+                    r.Request.Headers.AddHeader("Authorization", $"Bearer {r.Data.TokenValue}");
+                }
+                else
+                {
+                    r.Data = new Token(TokenType.ExistingBearer, authzHeader.Value);
                 }
             }
 
@@ -54,6 +85,15 @@ namespace DevProxy
 
         public override Task<PluginResult> BeforeResponseAsync(PluginRequest r)
         {
+            if (r.Data != null)
+            {
+                r.Response.Headers.AddHeader(new HttpHeader(
+                    $"X-DevProxy-{nameof(AzureDevOpsAuthPlugin)}-TokenType",
+                    r.Data.TokenType.ToString()));
+                r.Response.Headers.AddHeader(new HttpHeader(
+                    $"X-DevProxy-{nameof(AzureDevOpsAuthPlugin)}-TokenSHA512",
+                    r.Data.TokenValueSHA512));
+            }
             return Task.FromResult(PluginResult.Continue);
         }
 

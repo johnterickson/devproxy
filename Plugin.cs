@@ -5,6 +5,18 @@ using Titanium.Web.Proxy.Http;
 
 namespace DevProxy
 {
+    public interface IAuthPlugin
+    {
+        Task<(AuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args);
+    }
+
+    public enum AuthPluginResult
+    {
+        NoOpinion,
+        Authenticated,
+        Rejected,
+    }
+
     public enum PluginResult
     {
         Continue,
@@ -19,7 +31,7 @@ namespace DevProxy
 
     public abstract class Plugin : Plugin<object> { }
 
-    public abstract class Plugin<T> : IPlugin where T: class
+    public abstract class Plugin<T> : IPlugin where T : class
     {
         public abstract Task<PluginResult> BeforeRequestAsync(PluginRequest request);
 
@@ -55,11 +67,12 @@ namespace DevProxy
             {
                 get
                 {
-                    if(!this.AllData.TryGetValue(Plugin, out object v))
+                    if (this.AllData.TryGetValue(Plugin, out object v))
                     {
                         return (T)v;
                     }
-                    else {
+                    else
+                    {
                         return null;
                     }
                 }
@@ -69,7 +82,7 @@ namespace DevProxy
                 }
             }
 
-            private Dictionary<IPlugin, object> AllData => ((RequestContext)Args.UserData).PluginData;
+            private Dictionary<IPlugin, object> AllData => (Args.GetRequestContext()).PluginData;
         }
     }
 }

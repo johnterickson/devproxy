@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy;
+using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
@@ -26,7 +27,8 @@ namespace DevProxy
 
             int proxyPort = 8888;
             string proxyPassword = "Password123";
-            var plugins = new List<IPlugin>();
+
+            string wsl2hostIp = "172.28.160.1";
 
             foreach (int i in Enumerable.Range(0, args.Length))
             {
@@ -107,25 +109,61 @@ namespace DevProxy
 
             Task ipcServerTask = ipcServer.RunServerAsync(CancellationToken.None);
 
+            var authPlugins = new List<IAuthPlugin>();
+            authPlugins.Add(new ProxyPasswordAuthPlugin(proxyPassword));
+            authPlugins.Add(new ProcessTreeAuthPlugin(processTracker));
 
-            plugins.Add(new ProxyPasswordAuthPlugin(proxyPassword));
-            plugins.Add(new ProcessTreeAuthPlugin(processTracker));
-
-            plugins.Add(new AuthRequiredPlugin());
-
+            var plugins = new List<IPlugin>();
             plugins.Add(new BlobStoreCachePlugin());
             plugins.Add(new AzureDevOpsAuthPlugin());
 
-            proxy.BeforeRequest += async (sender, args) =>
+            Func<SessionEventArgsBase, Task> initAsync = async (args) =>
             {
-                args.UserData = new RequestContext(args);
+                RequestContext ctxt = args.GetRequestContext();
+                if (ctxt != null)
+                {
+                    return;
+                }
+
+                ctxt = new RequestContext(args);
+                args.UserData = ctxt;
 
                 var url = new Uri(args.HttpClient.Request.Url);
                 Console.WriteLine($"START {url}");
-                // foreach (var header in e.HttpClient.Request.Headers)
-                // {
-                //     Console.WriteLine($" {header.Name}: {header.Value}");
-                // }
+
+                foreach (var plugin in authPlugins)
+                {
+                    var (result, notes) = await plugin.BeforeRequestAsync(args);
+                    ctxt.AuthToProxyNotes.Add((plugin, $"{result.ToString()}_{notes}"));
+
+                    if (result == AuthPluginResult.Authenticated)
+                    {
+                        ctxt.IsAuthenticated = true;
+                        break;
+                    }
+                    else if (result == AuthPluginResult.Rejected)
+                    {
+                        break;
+                    }
+                }
+            };
+
+            proxy.BeforeRequest += async (sender, args) =>
+            {
+                await initAsync(args);
+                var ctxt = args.GetRequestContext();
+
+                if (!ctxt.IsAuthenticated)
+                {
+                    args.GenericResponse(
+                        "Must authenticate to proxy.",
+                        HttpStatusCode.ProxyAuthenticationRequired,
+                        new [] {
+                            new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""),
+                        });
+                    ctxt.AddAuthNotesToResponse();
+                    return;
+                }
 
                 foreach (var plugin in plugins)
                 {
@@ -137,8 +175,35 @@ namespace DevProxy
                 }
             };
 
+
+            var localhostEndpoint = new ExplicitProxyEndPoint(IPAddress.Loopback, proxyPort, decryptSsl: true);
+            localhostEndpoint.BeforeTunnelConnectRequest += (sender, args) => initAsync(args);
+            localhostEndpoint.BeforeTunnelConnectResponse += (sender, args) =>
+            {
+                var ctxt = args.GetRequestContext();
+                ctxt?.AddAuthNotesToResponse();
+                return Task.CompletedTask;
+            };
+            proxy.AddEndPoint(localhostEndpoint);
+
+            if (!string.IsNullOrEmpty(wsl2hostIp))
+            {
+                var wsl2Endpoint = new ExplicitProxyEndPoint(IPAddress.Parse(wsl2hostIp), proxyPort, decryptSsl: true);
+                wsl2Endpoint.BeforeTunnelConnectRequest += (sender, args) => initAsync(args);
+                wsl2Endpoint.BeforeTunnelConnectResponse += (sender, args) =>
+                {
+                    var ctxt = args.GetRequestContext();
+                    ctxt?.AddAuthNotesToResponse();
+                    return Task.CompletedTask;
+                };
+                proxy.AddEndPoint(wsl2Endpoint);
+            }
+
             proxy.BeforeResponse += async (sender, args) =>
             {
+                var ctxt = args.GetRequestContext();
+                ctxt.AddAuthNotesToResponse();
+
                 try
                 {
                     foreach (var plugin in plugins.AsEnumerable().Reverse())
@@ -191,12 +256,8 @@ namespace DevProxy
                 RegexOptions.Compiled | RegexOptions.Multiline
             );
 
-            proxy.AddEndPoint(new ExplicitProxyEndPoint(IPAddress.Loopback, proxyPort, decryptSsl: true));
-
-            string wsl2hostIp = "172.28.160.1";
             if (wsl2hostIp != null)
             {
-                proxy.AddEndPoint(new ExplicitProxyEndPoint(IPAddress.Parse(wsl2hostIp), proxyPort, decryptSsl: true));
                 string existingRule = await ProcessHelpers.RunAsync(
                     "powershell",
                     "-Command \"Get-NetFirewallRule -DisplayName 'DevProxy from WSL2' -ErrorAction SilentlyContinue\""

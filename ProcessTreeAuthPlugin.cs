@@ -1,9 +1,10 @@
 using System.Linq;
 using System.Threading.Tasks;
+using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy
 {
-    public class ProcessTreeAuthPlugin : Plugin
+    public class ProcessTreeAuthPlugin : IAuthPlugin
     {
         private readonly ProcessTracker _processTracker;
 
@@ -12,34 +13,30 @@ namespace DevProxy
             _processTracker = processTracker;
         }
 
-        public override async Task<PluginResult> BeforeRequestAsync(PluginRequest request)
+        public async Task<(AuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args)
         {
-            if (request.RequestContext.IsAuthenticated)
-            {
-                return PluginResult.Continue;
-            }
-
             var connections = await ProcessTcpConnection.FindConnectionsAsync();
             var connection = connections.FirstOrDefault(c =>
-                c.LocalEndpoint.Address.Equals(request.Args.ClientRemoteEndPoint.Address) &&
-                c.LocalEndpoint.Port == request.Args.ClientRemoteEndPoint.Port);
+                c.LocalEndpoint.Address.Equals(args.ClientRemoteEndPoint.Address) &&
+                c.LocalEndpoint.Port == args.ClientRemoteEndPoint.Port);
 
-            if (connection != null)
+            var ctxt = args.GetRequestContext();
+            if (connection == null)
+            {
+                return (AuthPluginResult.NoOpinion,"ConnectionNotFound");
+            }
+            else
             {
                 var (found, authRootProcessId) = await _processTracker.TryGetAuthRootAsync(connection.ProcessId);
                 if (found)
                 {
-                    request.RequestContext.IsAuthenticated = true;
-                    request.RequestContext.AuthToProxyNotes = "ProcessTreeAuth";
+                    return (AuthPluginResult.Authenticated,$"RootProcessId={authRootProcessId}");
+                }
+                else
+                {
+                    return (AuthPluginResult.NoOpinion,$"NoAuthRootForProcessId={connection.ProcessId}");
                 }
             }
-
-            return PluginResult.Continue;
-        }
-
-        public override Task<PluginResult> BeforeResponseAsync(PluginRequest request)
-        {
-            return Task.FromResult(PluginResult.Continue);
         }
     }
 }

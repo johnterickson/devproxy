@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Titanium.Web.Proxy.EventArguments;
+using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
 {
@@ -7,20 +8,36 @@ namespace DevProxy
     {
         public readonly Dictionary<IPlugin, object> PluginData = new Dictionary<IPlugin, object>();
         public bool IsAuthenticated = false;
-        public string AuthToProxyNotes = null;
-        public readonly SessionEventArgs Args;
+        public List<(IAuthPlugin,string)> AuthToProxyNotes = new List<(IAuthPlugin,string)>();
+        public SessionEventArgsBase Args;
 
-        public RequestContext(SessionEventArgs args)
+        public RequestContext(SessionEventArgsBase args)
         {
             this.Args = args;
+        }
+
+        public void AddAuthNotesToResponse()
+        {
+            foreach (var (plugin,authNote) in AuthToProxyNotes)
+            {
+                Args.HttpClient.Response.Headers.AddHeader(
+                    new HttpHeader(
+                        $"X-DevProxy-AuthToProxy-{plugin.GetType().Name}",
+                        authNote));
+            }
         }
     }
 
     public static class SessionEventArgsExtensions
     {
-        public static RequestContext GetRequestContext(this SessionEventArgs args)
+        public static RequestContext GetRequestContext(this SessionEventArgsBase args)
         {
-            return (RequestContext)args.UserData;
+            var ctxt = (RequestContext)args.UserData;
+            if (ctxt != null)
+            {
+                ctxt.Args = args;
+            }
+            return ctxt;
         }
     }
 }

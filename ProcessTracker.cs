@@ -35,12 +35,12 @@ namespace DevProxy
             }
         }
 
-        public async Task<(bool,uint)> TryGetAuthRootAsync(uint processId)
+        public async Task<(bool, uint)> TryGetAuthRootAsync(uint processId)
         {
             while (true)
             {
                 TrackedProcess process;
-                if(!_processes.TryGetValue(processId, out process))
+                if (!_processes.TryGetValue(processId, out process))
                 {
                     var timer = Stopwatch.StartNew();
                     while (!_processes.TryGetValue(processId, out process))
@@ -72,7 +72,8 @@ namespace DevProxy
         {
             if (!_processes.TryAdd(proc.ProcessId, new TrackedProcess(proc)))
             {
-                throw new Exception("Failed to add process to tracker");
+                // TODO: this happens sometimes at startup
+                //throw new Exception("Failed to add process to tracker");
             }
         }
 

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -26,7 +27,7 @@ namespace DevProxy
             var processTracker = new ProcessTracker();
 
             int proxyPort = 8888;
-            string proxyPassword = "Password123";
+            string proxyPassword = Guid.NewGuid().ToString("N");
 
             string wsl2hostIp = "172.28.160.1";
 
@@ -60,10 +61,20 @@ namespace DevProxy
                             await p.WaitForExitAsync();
                             return p.ExitCode;
                         }
+                    case "--get_token":
+                        {
+                            string message = JsonSerializer.Serialize(new IpcMessage
+                            {
+                                Command = "get_token",
+                            });
+                            string response = await Ipc.SendAsync(pipeName, message, CancellationToken.None);
+                            Console.Write(response);
+                            return 0;
+                        }
                     case "--port":
                         proxyPort = int.Parse(value);
                         break;
-                    case "--winauth":
+                    case "--win_auth":
                         proxy.EnableWinAuth = bool.Parse(value);
                         break;
                     case "--password":
@@ -97,6 +108,8 @@ namespace DevProxy
                                     await Task.Delay(100);
                                 }
                                 return "OK";
+                            case "get_token":
+                                return proxyPassword;
                             default:
                                 throw new ArgumentException($"Unknown command: `{request.Command}`");
                         }
@@ -278,15 +291,17 @@ namespace DevProxy
             proxy.Start();
 
             var pemForwardSlash = rootPem.Replace('\\', '/');
-            var pemFromWsl2 = "/mnt/" + char.ToLower(pemForwardSlash[0]) + pemForwardSlash.Substring(2);
+            var pemFromWsl2 = ProcessHelpers.ConvertToWSL2Path(rootPem);
+            var currentExePath = Assembly.GetEntryAssembly().Location.Replace(".dll",".exe");
+            var currentExeWsl2Path = ProcessHelpers.ConvertToWSL2Path(currentExePath);
 
             Console.WriteLine(@"For most apps:");
-            Console.WriteLine($"  HTTP_PROXY=http://{proxyPassword}@localhost:{proxyPort}");
+            Console.WriteLine($"  $env:HTTP_PROXY = \"http://$({currentExePath} --get_token)@localhost:{proxyPort}\"");
             Console.WriteLine(@"For windows git (via config):");
-            Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
+            // Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  git config --add http.sslcainfo {pemForwardSlash}");
             Console.WriteLine(@"For windows git (via env var):");
-            Console.WriteLine($"  HTTP_PROXY=http://user:{proxyPassword}@localhost:{proxyPort}");
+            // Console.WriteLine($"  HTTP_PROXY=http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemForwardSlash}");
 
             if (wsl2hostIp != null)
@@ -295,8 +310,8 @@ namespace DevProxy
                 Console.WriteLine($"  1. Once, install root cert");
                 Console.WriteLine($"       cp {pemFromWsl2} /etc/ssl/certs/");
                 Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
-                Console.WriteLine($"  2. Set envvars to enable:");
-                Console.WriteLine($"       export HTTP_PROXY=http://user:{proxyPassword}@{wsl2hostIp}:{proxyPort}");
+                Console.WriteLine($"  2. Set envvars to enable");
+                Console.WriteLine($"       export HTTP_PROXY=http://$({currentExeWsl2Path} --get_token)@{wsl2hostIp}:{proxyPort}");
                 Console.WriteLine($"       export HTTPS_PROXY=$HTTP_PROXY");
                 //Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemFromWsl2}");
             }

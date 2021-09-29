@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -7,6 +8,12 @@ namespace DevProxy
 {
     public static class ProcessHelpers
     {
+        public static string ConvertToWSL2Path(string path)
+        {
+            path = Path.GetFullPath(path).Replace('\\', '/');
+            return "/mnt/" + char.ToLower(path[0]) + path.Substring(2);
+        }
+
         public static async Task<string> RunAsync(string fileName, string arguments, bool admin = false, string stdin = null)
         {
             var process = Process.Start(new ProcessStartInfo(fileName, arguments)

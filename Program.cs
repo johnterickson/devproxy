@@ -158,7 +158,7 @@ namespace DevProxy
                     args.GenericResponse(
                         "Must authenticate to proxy.",
                         HttpStatusCode.ProxyAuthenticationRequired,
-                        new [] {
+                        new[] {
                             new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""),
                         });
                     ctxt.AddAuthNotesToResponse();
@@ -181,7 +181,14 @@ namespace DevProxy
             localhostEndpoint.BeforeTunnelConnectResponse += (sender, args) =>
             {
                 var ctxt = args.GetRequestContext();
-                ctxt?.AddAuthNotesToResponse();
+                if (!ctxt.IsAuthenticated)
+                {
+                    args.HttpClient.Response.StatusCode = (int)HttpStatusCode.ProxyAuthenticationRequired;
+                    args.HttpClient.Response.Headers.Clear();
+                    args.HttpClient.Response.Headers.AddHeader(
+                        new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""));
+                }
+                ctxt.AddAuthNotesToResponse();
                 return Task.CompletedTask;
             };
             proxy.AddEndPoint(localhostEndpoint);
@@ -193,7 +200,14 @@ namespace DevProxy
                 wsl2Endpoint.BeforeTunnelConnectResponse += (sender, args) =>
                 {
                     var ctxt = args.GetRequestContext();
-                    ctxt?.AddAuthNotesToResponse();
+                    if (!ctxt.IsAuthenticated)
+                    {
+                        args.HttpClient.Response.StatusCode = (int)HttpStatusCode.ProxyAuthenticationRequired;
+                        args.HttpClient.Response.Headers.Clear();
+                        args.HttpClient.Response.Headers.AddHeader(
+                            new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""));
+                    }
+                    ctxt.AddAuthNotesToResponse();
                     return Task.CompletedTask;
                 };
                 proxy.AddEndPoint(wsl2Endpoint);

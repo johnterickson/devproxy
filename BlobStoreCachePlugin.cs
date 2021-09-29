@@ -133,9 +133,14 @@ namespace DevProxy
 
         public override async Task<PluginResult> BeforeResponseAsync(PluginRequest r)
         {
-            r.Args.HttpClient.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
+            if (r.Data == null)
+            {
+                return PluginResult.Continue;
+            }
 
-            if (r.Data != null && r.Response.StatusCode >= 200 && r.Response.StatusCode < 300)
+            r.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
+
+            if (r.Response.StatusCode >= 200 && r.Response.StatusCode < 300)
             {
                 using (var ms = new MemoryStream(await r.Args.GetResponseBody()))
                 {

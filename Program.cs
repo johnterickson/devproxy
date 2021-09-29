@@ -120,30 +120,31 @@ namespace DevProxy
             Func<SessionEventArgsBase, Task> initAsync = async (args) =>
             {
                 RequestContext ctxt = args.GetRequestContext();
-                if (ctxt != null)
+                if (ctxt == null)
                 {
-                    return;
+                    ctxt = new RequestContext(args);
+                    args.UserData = ctxt;
+
+                    var url = new Uri(args.HttpClient.Request.Url);
+                    Console.WriteLine($"START {url}");
                 }
 
-                ctxt = new RequestContext(args);
-                args.UserData = ctxt;
-
-                var url = new Uri(args.HttpClient.Request.Url);
-                Console.WriteLine($"START {url}");
-
-                foreach (var plugin in authPlugins)
+                if (!ctxt.IsAuthenticated)
                 {
-                    var (result, notes) = await plugin.BeforeRequestAsync(args);
-                    ctxt.AuthToProxyNotes.Add((plugin, $"{result.ToString()}_{notes}"));
+                    foreach (var plugin in authPlugins)
+                    {
+                        var (result, notes) = await plugin.BeforeRequestAsync(args);
+                        ctxt.AuthToProxyNotes.Add((plugin, $"{result.ToString()}_{notes}"));
 
-                    if (result == AuthPluginResult.Authenticated)
-                    {
-                        ctxt.IsAuthenticated = true;
-                        break;
-                    }
-                    else if (result == AuthPluginResult.Rejected)
-                    {
-                        break;
+                        if (result == AuthPluginResult.Authenticated)
+                        {
+                            ctxt.IsAuthenticated = true;
+                            break;
+                        }
+                        else if (result == AuthPluginResult.Rejected)
+                        {
+                            break;
+                        }
                     }
                 }
             };
@@ -155,12 +156,7 @@ namespace DevProxy
 
                 if (!ctxt.IsAuthenticated)
                 {
-                    args.GenericResponse(
-                        "Must authenticate to proxy.",
-                        HttpStatusCode.ProxyAuthenticationRequired,
-                        new[] {
-                            new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""),
-                        });
+                    ctxt.ReturnProxy407();
                     ctxt.AddAuthNotesToResponse();
                     return;
                 }
@@ -183,10 +179,7 @@ namespace DevProxy
                 var ctxt = args.GetRequestContext();
                 if (!ctxt.IsAuthenticated)
                 {
-                    args.HttpClient.Response.StatusCode = (int)HttpStatusCode.ProxyAuthenticationRequired;
-                    args.HttpClient.Response.Headers.Clear();
-                    args.HttpClient.Response.Headers.AddHeader(
-                        new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""));
+                    ctxt.ReturnProxy407();
                 }
                 ctxt.AddAuthNotesToResponse();
                 return Task.CompletedTask;
@@ -202,10 +195,7 @@ namespace DevProxy
                     var ctxt = args.GetRequestContext();
                     if (!ctxt.IsAuthenticated)
                     {
-                        args.HttpClient.Response.StatusCode = (int)HttpStatusCode.ProxyAuthenticationRequired;
-                        args.HttpClient.Response.Headers.Clear();
-                        args.HttpClient.Response.Headers.AddHeader(
-                            new HttpHeader("Proxy-Authenticate", "Basic realm=\"DevProxy\""));
+                        ctxt.ReturnProxy407();
                     }
                     ctxt.AddAuthNotesToResponse();
                     return Task.CompletedTask;
@@ -298,11 +288,17 @@ namespace DevProxy
             Console.WriteLine(@"For windows git (via env var):");
             Console.WriteLine($"  HTTP_PROXY=http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemForwardSlash}");
+
             if (wsl2hostIp != null)
             {
-                Console.WriteLine(@"For WSL2 git (via env var):");
-                Console.WriteLine($"  HTTP_PROXY=http://user:{proxyPassword}@{wsl2hostIp}:{proxyPort}");
-                Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemFromWsl2}");
+                Console.WriteLine(@"For WSL2 (Ubuntu tested):");
+                Console.WriteLine($"  1. Once, install root cert");
+                Console.WriteLine($"       cp {pemFromWsl2} /etc/ssl/certs/");
+                Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
+                Console.WriteLine($"  2. Set envvars to enable:");
+                Console.WriteLine($"       export HTTP_PROXY=http://user:{proxyPassword}@{wsl2hostIp}:{proxyPort}");
+                Console.WriteLine($"       export HTTPS_PROXY=$HTTP_PROXY");
+                //Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemFromWsl2}");
             }
 
             Console.WriteLine(@"Started!");

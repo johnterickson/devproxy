@@ -49,11 +49,13 @@ namespace DevProxy
             public Request Request => Args.HttpClient.Request;
             public Response Response => Args.HttpClient.Response;
 
+            public RequestContext RequestContext => Args.GetRequestContext();
+
             public T Data
             {
                 get
                 {
-                    if(this.AllData.TryGetValue(Plugin, out object v))
+                    if(!this.AllData.TryGetValue(Plugin, out object v))
                     {
                         return (T)v;
                     }
@@ -67,7 +69,7 @@ namespace DevProxy
                 }
             }
 
-            private Dictionary<IPlugin, object> AllData => (Dictionary<IPlugin, object>)Args.UserData;
+            private Dictionary<IPlugin, object> AllData => ((RequestContext)Args.UserData).PluginData;
         }
     }
 }

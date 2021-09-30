@@ -13,7 +13,7 @@ namespace DevProxy
         {
             lock(_hasher)
             {
-                return _hasher.ComputeHash(_encoding.GetBytes(secret)).ToHexString().Substring(0, 8);
+                return _hasher.ComputeHash(_encoding.GetBytes(secret)).ToHexString().Substring(0, 32);
             }
         }
     }

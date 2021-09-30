@@ -8,6 +8,8 @@ namespace DevProxy
 {
     public class RequestContext
     {
+        public bool ConnectSeen;
+        public bool RequestSeen;
         public readonly Dictionary<IPlugin, object> PluginData = new Dictionary<IPlugin, object>();
         public bool IsAuthenticated = false;
         public List<(IAuthPlugin, string)> AuthToProxyNotes = new List<(IAuthPlugin, string)>();

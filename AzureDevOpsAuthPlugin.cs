@@ -1,12 +1,9 @@
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Extensions.Msal;
-using Microsoft.VisualStudio.Services.Content.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,7 +36,7 @@ namespace DevProxy
         private const string Resource = "499b84ac-1321-427f-aa17-267ca6975798/.default";
         private const string ClientId = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1";
         private const string Authority = "https://login.microsoftonline.com/organizations";
-        
+
 
         public enum TokenType
         {
@@ -57,9 +54,16 @@ namespace DevProxy
                 return new Token(TokenType.EnvVar_AZURE_DEVOPS_TOKEN, token);
             }
 
-            var msalToken = await AcquireTokenWithWindowsIntegratedAuth(cancellationToken);
+            IMsalToken msalToken = null;
+            if (msalToken == null)
+            {
+                msalToken = await AcquireTokenSilentlyAsync(cancellationToken);
+            }
+            if (msalToken == null)
+            {
+                msalToken = await AcquireTokenWithWindowsIntegratedAuth(cancellationToken);
+            }
 
-            //var msalToken = await AcquireTokenSilentlyAsync(token);
             return new Token(TokenType.WindowsIntegratedAuth, msalToken.AccessToken);
         }
 
@@ -208,8 +212,16 @@ namespace DevProxy
         {
             var helper = await GetMsalCacheHelperAsync().ConfigureAwait(false);
 
-            var publicClientBuilder = PublicClientApplicationBuilder.Create(ClientId)
-                .WithAuthority(Authority);
+            var publicClientBuilder = PublicClientApplicationBuilder
+                .Create(ClientId)
+                .WithAuthority(Authority)
+                .WithLogging((LogLevel level, string message, bool containsPii) =>
+                {
+                    if (level < LogLevel.Info)
+                    {
+                        Console.WriteLine($"{level} - {message}");
+                    }
+                });
 
             if (useLocalHost)
             {

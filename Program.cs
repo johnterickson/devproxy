@@ -26,10 +26,17 @@ namespace DevProxy
 
             var processTracker = new ProcessTracker();
 
-            int proxyPort = 8888;
-            string proxyPassword = Guid.NewGuid().ToString("N");
+            string baseSecret = "StoreSomethingRandomInDPAPI";
+            string proxyPassword = HasherHelper.HashSecret(baseSecret + DateTime.Now.ToLongDateString());
 
+            int proxyPort = 8888;
             string wsl2hostIp = "172.28.160.1";
+
+            bool logRequests = false;
+
+            int maxCachedConnectionsPerHost = 64;
+            string upstreamHttpProxy = Environment.GetEnvironmentVariable("http_proxy");
+            string upstreamHttpsProxy = Environment.GetEnvironmentVariable("https_proxy");
 
             foreach (int i in Enumerable.Range(0, args.Length))
             {
@@ -74,6 +81,18 @@ namespace DevProxy
                     case "--port":
                         proxyPort = int.Parse(value);
                         break;
+                    case "--upstream_http_proxy":
+                        upstreamHttpProxy = value;
+                        break;
+                    case "--upstream_https_proxy":
+                        upstreamHttpsProxy = value;
+                        break;
+                    case "--max_cached_connections_per_host":
+                        maxCachedConnectionsPerHost = int.Parse(value);
+                        break;
+                    case "--log_requests":
+                        logRequests = bool.Parse(value);
+                        break;
                     case "--win_auth":
                         proxy.EnableWinAuth = bool.Parse(value);
                         break;
@@ -83,6 +102,37 @@ namespace DevProxy
                     default:
                         throw new ArgumentException($"Unknown argument: `{arg}`");
                 }
+            }
+
+            proxy.MaxCachedConnections = maxCachedConnectionsPerHost;
+
+            Func<string, ExternalProxy> parseProxy = (url) =>
+            {
+                var proxyUrl = new Uri(url);
+                string user = null;
+                string password = null;
+                if (proxyUrl.UserInfo != null)
+                {
+                    string[] userInfoTokens = proxyUrl.UserInfo.Split(':');
+                    user = userInfoTokens[0];
+                    if (userInfoTokens.Length > 1)
+                    {
+                        password = userInfoTokens[1];
+                    }
+                }
+
+                return new ExternalProxy(proxyUrl.Host, proxyUrl.Port, user, password);
+            };
+
+
+            if (!string.IsNullOrEmpty(upstreamHttpProxy))
+            {
+                proxy.UpStreamHttpProxy = parseProxy(upstreamHttpProxy);
+            }
+
+            if (!string.IsNullOrEmpty(upstreamHttpsProxy))
+            {
+                proxy.UpStreamHttpsProxy = parseProxy(upstreamHttpsProxy);
             }
 
             var ipcServer = new Ipc(
@@ -132,14 +182,37 @@ namespace DevProxy
 
             Func<SessionEventArgsBase, Task> initAsync = async (args) =>
             {
+                var url = new Uri(args.HttpClient.Request.Url);
+
                 RequestContext ctxt = args.GetRequestContext();
                 if (ctxt == null)
                 {
                     ctxt = new RequestContext(args);
                     args.UserData = ctxt;
+                }
 
-                    var url = new Uri(args.HttpClient.Request.Url);
-                    Console.WriteLine($"START {url}");
+                string method = ctxt.Args.HttpClient.Request.Method.ToUpperInvariant();
+                if (method == "CONNECT")
+                {
+                    if (!ctxt.ConnectSeen)
+                    {
+                        if (logRequests)
+                        {
+                            Console.WriteLine($"CONNECT {url}");
+                        }
+                        ctxt.ConnectSeen = true;
+                    }
+                }
+                else
+                {
+                    if (!ctxt.RequestSeen)
+                    {
+                        if (logRequests)
+                        {
+                            Console.WriteLine($"{method} {url}");
+                        }
+                        ctxt.RequestSeen = true;
+                    }
                 }
 
                 if (!ctxt.IsAuthenticated)
@@ -184,6 +257,11 @@ namespace DevProxy
                 }
             };
 
+            proxy.OnServerConnectionCreate += async (sender, args) => {
+                // Console.WriteLine("Connected to remote: " + args.RemoteEndPoint.ToString());
+                return Task.CompletedTask;
+            };
+
 
             var localhostEndpoint = new ExplicitProxyEndPoint(IPAddress.Loopback, proxyPort, decryptSsl: true);
             localhostEndpoint.BeforeTunnelConnectRequest += (sender, args) => initAsync(args);
@@ -195,6 +273,10 @@ namespace DevProxy
                     ctxt.ReturnProxy407();
                 }
                 ctxt.AddAuthNotesToResponse();
+                if (logRequests)
+                {
+                    Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                }
                 return Task.CompletedTask;
             };
             proxy.AddEndPoint(localhostEndpoint);
@@ -211,6 +293,10 @@ namespace DevProxy
                         ctxt.ReturnProxy407();
                     }
                     ctxt.AddAuthNotesToResponse();
+                    if (logRequests)
+                    {
+                        Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                    }
                     return Task.CompletedTask;
                 };
                 proxy.AddEndPoint(wsl2Endpoint);
@@ -234,11 +320,14 @@ namespace DevProxy
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"END   {args.HttpClient?.Request?.Url} {e.Message}");
+                    Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {e.Message}");
                 }
                 finally
                 {
-                    Console.WriteLine($"END   {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                    if (logRequests)
+                    {
+                        Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                    }
                 }
             };
 
@@ -292,11 +381,11 @@ namespace DevProxy
 
             var pemForwardSlash = rootPem.Replace('\\', '/');
             var pemFromWsl2 = ProcessHelpers.ConvertToWSL2Path(rootPem);
-            var currentExePath = Assembly.GetEntryAssembly().Location.Replace(".dll",".exe");
+            var currentExePath = Assembly.GetEntryAssembly().Location.Replace(".dll", ".exe");
             var currentExeWsl2Path = ProcessHelpers.ConvertToWSL2Path(currentExePath);
 
             Console.WriteLine(@"For most apps:");
-            Console.WriteLine($"  $env:HTTP_PROXY = \"http://$({currentExePath} --get_token)@localhost:{proxyPort}\"");
+            Console.WriteLine($"  $env:HTTP_PROXY = \"http://user:$({currentExePath} --get_token)@localhost:{proxyPort}\"");
             Console.WriteLine(@"For windows git (via config):");
             // Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  git config --add http.sslcainfo {pemForwardSlash}");
@@ -306,14 +395,18 @@ namespace DevProxy
 
             if (wsl2hostIp != null)
             {
+                string linuxPemPath = "/etc/ssl/certs/devproxy.pem";
+                //https://stackoverflow.com/questions/51176209/http-proxy-not-working
+                // curl requires lowercase http_proxy env var name
                 Console.WriteLine(@"For WSL2 (Ubuntu tested):");
                 Console.WriteLine($"  1. Once, install root cert");
-                Console.WriteLine($"       cp {pemFromWsl2} /etc/ssl/certs/");
+                Console.WriteLine($"       sudo apt install ca-certificates");
+                Console.WriteLine($"       sudo cp {pemFromWsl2} {linuxPemPath}");
                 Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
                 Console.WriteLine($"  2. Set envvars to enable");
-                Console.WriteLine($"       export HTTP_PROXY=http://$({currentExeWsl2Path} --get_token)@{wsl2hostIp}:{proxyPort}");
-                Console.WriteLine($"       export HTTPS_PROXY=$HTTP_PROXY");
-                //Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemFromWsl2}");
+                Console.WriteLine($"       export http_proxy=http://user:$({currentExeWsl2Path} --get_token)@{wsl2hostIp}:{proxyPort}");
+                Console.WriteLine($"       export https_proxy=$http_proxy");
+                Console.WriteLine($"       export NODE_EXTRA_CA_CERTS={linuxPemPath}");
             }
 
             Console.WriteLine(@"Started!");

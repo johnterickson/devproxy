@@ -35,6 +35,9 @@ namespace DevProxy
         {
             // e.g. https://4fdvsblobprodwcus012.blob.core.windows.net/b-0efb4611d5654cd19a647d6cb6d7d5f0/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00.blob
             new Regex(@"https:\/\/[^\.]+\.blob\.core\.windows\.net\/.*\/([0-9a-fA-F]{64}00)\.blob?.*", RegexOptions.Compiled),
+
+            // e.g. https://1yovsblobprodeus2184.vsblob.vsassets.io/b-c8701bf2aece44c9baedcf8a12ad5bd3/7661BD23B4554382BA3494CB41B96EB40CCC5B16D7DF955B530FD66544E889FA00.blob
+            new Regex(@"https:\/\/[^\.]+\.vsblob\.vsassets\.io\/.*\/([0-9a-fA-F]{64}00)\.blob?.*", RegexOptions.Compiled),
         };
 
         private readonly IContentStore _contentStore;
@@ -64,7 +67,15 @@ namespace DevProxy
 
         public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
         {
-            var url = new Uri(r.Args.HttpClient.Request.Url);
+            var url = new Uri(r.Request.Url);
+
+            string range = r.Request.Headers.GetFirstHeader("Range")?.Value;
+            if (range != null)
+            {
+                // TODO: Support range requests
+                return PluginResult.Continue;
+            }
+
             Match match = _urlRegexes.Select(u => u.Match(url.AbsoluteUri)).FirstOrDefault(m => m.Success);
             if (match == null || match.Groups.Count != 2)
             {
@@ -73,7 +84,7 @@ namespace DevProxy
 
             string hashString = match.Groups[1].Value;
 
-            Console.WriteLine($"Found blob request {hashString}.");
+            // Console.WriteLine($"Found blob request {hashString}.");
 
             byte[] hashBytes;
             if (!HexUtilities.TryToByteArray(hashString, out hashBytes))
@@ -99,10 +110,9 @@ namespace DevProxy
                 Context = new Context(url.AbsoluteUri.ToString(), null)
             };
 
-            Console.WriteLine($"Found blob request {hash.Serialize()}.");
+            // Console.WriteLine($"Found blob request {hash.Serialize()}.");
 
             // TODO compression
-            // TODO ranges
 
             var streamResult = await _contentSession.OpenStreamAsync(
                 r.Data.Context,
@@ -112,7 +122,7 @@ namespace DevProxy
             {
                 using (streamResult.Stream)
                 {
-                    Console.WriteLine($"Found blob in cache {hash.Serialize()}.");
+                    // Console.WriteLine($"Found blob in cache {hash.Serialize()}.");
                     var body = new byte[streamResult.StreamWithLength.Value.Length];
                     await streamResult.Stream.ReadAsync(body, 0, body.Length);
                     var headers = new List<HttpHeader>()
@@ -126,7 +136,7 @@ namespace DevProxy
             }
             else
             {
-                Console.WriteLine($"Blob not in cache {hash.Serialize()}.");
+                // Console.WriteLine($"Blob not in cache {hash.Serialize()}.");
                 return PluginResult.Continue;
             }
         }

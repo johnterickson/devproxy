@@ -23,7 +23,7 @@ namespace Test
             handler.UseProxy = true;
             handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
             {
-                return cert.Equals(proxyRootCert);
+                return errors == System.Net.Security.SslPolicyErrors.None || cert.Equals(proxyRootCert);
             };
 
             return handler;

@@ -39,7 +39,7 @@ namespace DevProxy
             await stream.WriteAsync(messageBuffer, 0, messageBuffer.Length, cancellationToken);
         }
 
-        public static async Task<string?> ReceiveMessageAsync(PipeStream stream, CancellationToken cancellationToken)
+        public static async Task<string> ReceiveMessageAsync(PipeStream stream, CancellationToken cancellationToken)
         {
             var lengthBuffer = new byte[4];
             for (int i = 0; i < 4; i++)
@@ -100,7 +100,7 @@ namespace DevProxy
                         }
                     }
                 }
-                catch (TaskCanceledException e) when (cancellationToken.IsCancellationRequested)
+                catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     return;
                 }

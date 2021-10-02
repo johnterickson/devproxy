@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/DevProxy.csproj",
+                "${workspaceFolder}/proxy/DevProxy.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -21,7 +21,7 @@
                 "publish",
                 "-r",
                 "win10-x64",
-                "${workspaceFolder}/DevProxy.csproj",
+                "${workspaceFolder}/proxy/DevProxy.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -37,7 +37,7 @@
                 "Release",
                 "-r",
                 "win10-x64",
-                "${workspaceFolder}/DevProxy.csproj",
+                "${workspaceFolder}/proxy/DevProxy.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -50,7 +50,7 @@
             "args": [
                 "watch",
                 "run",
-                "${workspaceFolder}/DevProxy.csproj",
+                "${workspaceFolder}/proxy/DevProxy.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],

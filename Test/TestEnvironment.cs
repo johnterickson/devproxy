@@ -37,11 +37,11 @@ namespace Test
                 return proxy;
             });
 
-            var (testPort, testServer) = await TestHelpers.CreateWithRandomPort(async p => {
+            var (testPort, testServer) = await TestHelpers.CreateWithRandomPort(p => {
                 var server = new HttpListener();
                 server.Prefixes.Add($"http://localhost:{p}/");
                 server.Start();
-                return server;
+                return Task.FromResult(server);
             });
 
             var _serverTask = Task.Run(async () => {

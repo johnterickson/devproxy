@@ -49,14 +49,7 @@ namespace DevProxy
         {
             get
             {
-                if (IsConnectMethod)
-                {
-                    return IsConnectAuthenticated;
-                }
-                else
-                {
-                    return IsRequestAuthenticated;
-                }
+                return IsConnectAuthenticated || IsRequestAuthenticated;
             }
             set
             {

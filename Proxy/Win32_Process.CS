@@ -1,4 +1,6 @@
 ﻿// mgmtclassgen Win32_Process /n root\cimv2 /o WMI.Win32
+#pragma warning disable 0618 
+
 namespace WMI.Win32 {
     using System.ComponentModel;
     using System.Management;

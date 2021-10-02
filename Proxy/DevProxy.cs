@@ -180,6 +180,29 @@ namespace DevProxy
             return Task.CompletedTask;
         }
 
+        private async Task OnBeforeRequestAsync(object sender, SessionEventArgs args)
+        {
+            await InitRequestAsync(args);
+            var ctxt = args.GetRequestContext();
+
+            if (!ctxt.IsAuthenticated)
+            {
+                ctxt.ReturnProxy407();
+                ctxt.AddAuthNotesToResponse();
+                args.Respond(args.HttpClient.Response);
+                return;
+            }
+
+            foreach (var plugin in plugins)
+            {
+                var result = await plugin.BeforeRequestAsync(args);
+                if (result == PluginResult.Stop)
+                {
+                    return;
+                }
+            }
+        }
+
 
         private async Task OnBeforeResponseAsync(object sender, SessionEventArgs args)
         {
@@ -211,29 +234,6 @@ namespace DevProxy
                 if (logRequests)
                 {
                     Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
-                }
-            }
-        }
-
-        private async Task OnBeforeRequestAsync(object sender, SessionEventArgs args)
-        {
-            await InitRequestAsync(args);
-            var ctxt = args.GetRequestContext();
-
-            if (!ctxt.IsAuthenticated)
-            {
-                ctxt.ReturnProxy407();
-                ctxt.AddAuthNotesToResponse();
-                args.Respond(args.HttpClient.Response);
-                return;
-            }
-
-            foreach (var plugin in plugins)
-            {
-                var result = await plugin.BeforeRequestAsync(args);
-                if (result == PluginResult.Stop)
-                {
-                    return;
                 }
             }
         }

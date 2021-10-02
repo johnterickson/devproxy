@@ -11,6 +11,7 @@
     <PackageReference Include="Titanium.Web.Proxy" Version="3.1.1397" />
     <PackageReference Include="BuildXL.Cache.Libraries" Version="0.1.0-20210723.4" />
     <PackageReference Include="System.Security.Cryptography.Cng" Version="4.5.0" />
+    <PackageReference Include="NETStandard.Library" Version="2.0.3" />
   </ItemGroup>
 
 </Project>

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -42,6 +43,8 @@ namespace DevProxy
 
         public string rootPfx;
         public string rootPem;
+
+        public X509Certificate2 rootCert => proxy.CertificateManager.RootCertificate;
 
         public DevProxy()
         {
@@ -172,6 +175,11 @@ namespace DevProxy
         private async Task OnBeforeResponseAsync(object sender, SessionEventArgs args)
         {
             var ctxt = args.GetRequestContext();
+            if (!ctxt.IsAuthenticated)
+            {
+                return;
+            }
+            
             ctxt.AddAuthNotesToResponse();
 
             try

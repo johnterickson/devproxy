@@ -2,16 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using Titanium.Web.Proxy.EventArguments;
+using Titanium.Web.Proxy.Http;
 using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
 {
     public class RequestContext
     {
-        public bool ConnectSeen;
-        public bool RequestSeen;
         public readonly Dictionary<IPlugin, object> PluginData = new Dictionary<IPlugin, object>();
-        public bool IsAuthenticated = false;
+        public bool IsConnectAuthenticated = false;
+        public bool IsRequestAuthenticated = false;
         public List<(IAuthPlugin, string)> AuthToProxyNotes = new List<(IAuthPlugin, string)>();
         public SessionEventArgsBase Args;
 
@@ -40,6 +40,34 @@ namespace DevProxy
                     new HttpHeader(
                         $"X-DevProxy-AuthToProxy-{plugin.GetType().Name}",
                         authNote));
+            }
+        }
+
+        public Request Request => Args.HttpClient.Request;
+        public bool IsConnectMethod => Request.Method == "CONNECT";
+        public bool IsAuthenticated
+        {
+            get
+            {
+                if (IsConnectMethod)
+                {
+                    return IsConnectAuthenticated;
+                }
+                else
+                {
+                    return IsRequestAuthenticated;
+                }
+            }
+            set
+            {
+                if (IsConnectMethod)
+                {
+                    IsConnectAuthenticated = value;
+                }
+                else
+                {
+                    IsRequestAuthenticated = value;
+                }
             }
         }
     }

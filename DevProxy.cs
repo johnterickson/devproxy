@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -157,7 +158,6 @@ namespace DevProxy
             var ctxt = args.GetRequestContext();
             if (!ctxt.IsAuthenticated)
             {
-                //ctxt.ReturnProxy407();
                 throw new UnauthorizedAccessException();
             }
             ctxt.AddAuthNotesToResponse();
@@ -249,28 +249,9 @@ namespace DevProxy
                 args.UserData = ctxt;
             }
 
-            string method = ctxt.Args.HttpClient.Request.Method.ToUpperInvariant();
-            if (method == "CONNECT")
+            if (logRequests)
             {
-                if (!ctxt.ConnectSeen)
-                {
-                    if (logRequests)
-                    {
-                        Console.WriteLine($"CONNECT {url}");
-                    }
-                    ctxt.ConnectSeen = true;
-                }
-            }
-            else
-            {
-                if (!ctxt.RequestSeen)
-                {
-                    if (logRequests)
-                    {
-                        Console.WriteLine($"{method} {url}");
-                    }
-                    ctxt.RequestSeen = true;
-                }
+                Console.WriteLine($"{ctxt.Request.Method} {ctxt.Request.Url}");
             }
 
             if (!ctxt.IsAuthenticated)

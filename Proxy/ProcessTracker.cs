@@ -6,7 +6,7 @@ using WMI.Win32;
 
 namespace DevProxy
 {
-    public class ProcessTracker
+    public sealed class ProcessTracker : IDisposable
     {
         private readonly ProcessWatcher _processWatcher = new ProcessWatcher();
         private readonly ConcurrentDictionary<uint, TrackedProcess> _processes = new ConcurrentDictionary<uint, TrackedProcess>();
@@ -86,6 +86,11 @@ namespace DevProxy
         private void ProcessDeleted(Win32_Process proc)
         {
             _processes.TryRemove(proc.ProcessId, out var _dummy);
+        }
+
+        public void Dispose()
+        {
+            _processWatcher.Dispose();
         }
     }
 }

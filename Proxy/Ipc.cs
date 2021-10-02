@@ -14,8 +14,10 @@ namespace DevProxy
         public Dictionary<string, string> Args { get; set; }
     }
 
-    class Ipc
+    sealed class Ipc : IDisposable
     {
+        private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
+
         private readonly string _pipeName;
         public readonly Task Completion;
         private readonly Func<object, string, CancellationToken, Task<string>> _handler;
@@ -24,7 +26,7 @@ namespace DevProxy
         {
             _pipeName = pipeName;
             _handler = handler;
-            Completion = Task.Run(() => RunServerAsync(CancellationToken.None));
+            Completion = Task.Run(() => RunServerAsync(_shutdown.Token));
         }
 
         public static async Task SendMessageAsync(PipeStream stream, string message, CancellationToken cancellationToken)
@@ -78,7 +80,7 @@ namespace DevProxy
             }
         }
 
-        public async Task RunServerAsync(CancellationToken cancellationToken)
+        private async Task RunServerAsync(CancellationToken cancellationToken)
         {
             Task nextListener = null;
             while (!cancellationToken.IsCancellationRequested)
@@ -98,6 +100,10 @@ namespace DevProxy
                         }
                     }
                 }
+                catch (TaskCanceledException e) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
                 catch (Exception e)
                 {
                     Console.WriteLine(e.Message);
@@ -107,6 +113,19 @@ namespace DevProxy
             if (nextListener != null)
             {
                 await nextListener;
+            }
+        }
+
+        public void Dispose()
+        {
+            _shutdown.Cancel();
+            try
+            {
+                Completion.Wait();
+            }
+            catch
+            {
+
             }
         }
     }

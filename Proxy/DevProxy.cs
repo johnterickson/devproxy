@@ -16,8 +16,10 @@ using Titanium.Web.Proxy.Models;
 
 namespace DevProxy
 {
-    public class DevProxy
+    public sealed class DevProxy : IDisposable
     {
+        private static CancellationTokenSource _shutdown = new CancellationTokenSource();
+
         public ProxyServer proxy = new ProxyServer();
 
         public ProcessTracker processTracker = new ProcessTracker();
@@ -51,6 +53,13 @@ namespace DevProxy
             pipeName = "devproxy";
 
             proxyPassword = HasherHelper.HashSecret(baseSecret + DateTime.Now.ToLongDateString());
+        }
+
+        public void Dispose()
+        {
+            ipcServer.Dispose();
+            processTracker.Dispose();
+            proxy.Stop();
         }
 
         private async Task<string> HandleIpc(object sender, string request_json, CancellationToken cancellationToken)
@@ -179,7 +188,7 @@ namespace DevProxy
             {
                 return;
             }
-            
+
             ctxt.AddAuthNotesToResponse();
 
             try
@@ -215,6 +224,7 @@ namespace DevProxy
             {
                 ctxt.ReturnProxy407();
                 ctxt.AddAuthNotesToResponse();
+                args.Respond(args.HttpClient.Response);
                 return;
             }
 

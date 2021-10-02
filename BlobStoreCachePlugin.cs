@@ -31,6 +31,7 @@ namespace DevProxy
     */
     public class BlobStoreCachePlugin : Plugin<RequestInfo>
     {
+        private static readonly string[] HostsSuffixes = { "blob.core.windows.net", "vsblob.vsassets.io" };
         private static readonly Regex[] _urlRegexes = new[]
         {
             // e.g. https://4fdvsblobprodwcus012.blob.core.windows.net/b-0efb4611d5654cd19a647d6cb6d7d5f0/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00.blob
@@ -39,6 +40,11 @@ namespace DevProxy
             // e.g. https://1yovsblobprodeus2184.vsblob.vsassets.io/b-c8701bf2aece44c9baedcf8a12ad5bd3/7661BD23B4554382BA3494CB41B96EB40CCC5B16D7DF955B530FD66544E889FA00.blob
             new Regex(@"https:\/\/[^\.]+\.vsblob\.vsassets\.io\/.*\/([0-9a-fA-F]{64}00)\.blob?.*", RegexOptions.Compiled),
         };
+        
+        public override bool IsHostRelevant(string host)
+        {
+            return HostsSuffixes.Any(h => host.EndsWith(h));
+        }
 
         private readonly IContentStore _contentStore;
         private readonly IContentSession _contentSession;
@@ -127,7 +133,7 @@ namespace DevProxy
                     await streamResult.Stream.ReadAsync(body, 0, body.Length);
                     var headers = new List<HttpHeader>()
                     {
-                        new HttpHeader("Content-Length", body.Length.ToString()),
+                        new HttpHeader("Content-Length", body.LongLength.ToString()),
                         new HttpHeader($"X-DevProxy-{this.GetType().Name}-Cache", "HIT"),
                     };
                     r.Args.GenericResponse(body, HttpStatusCode.OK, headers, closeServerConnection: false);
@@ -150,7 +156,10 @@ namespace DevProxy
 
             r.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
 
-            if (r.Response.StatusCode >= 200 && r.Response.StatusCode < 300)
+            if (r.Response.StatusCode >= 200 
+                && r.Response.StatusCode < 300
+                // The maximum size in any single dimension is 2,147,483,591 (0x7FFFFFC7) for byte arrays
+                && r.Response.ContentLength < 0x7FFFFFC7) //
             {
                 using (var ms = new MemoryStream(await r.Args.GetResponseBody()))
                 {

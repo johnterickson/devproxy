@@ -25,6 +25,7 @@ namespace DevProxy
 
     public interface IPlugin
     {
+        bool IsHostRelevant(string host);
         Task<PluginResult> BeforeRequestAsync(SessionEventArgs args);
         Task<PluginResult> BeforeResponseAsync(SessionEventArgs args);
     }
@@ -46,6 +47,8 @@ namespace DevProxy
         {
             return BeforeResponseAsync(new PluginRequest(this, args));
         }
+
+        public abstract bool IsHostRelevant(string host);
 
         public class PluginRequest
         {

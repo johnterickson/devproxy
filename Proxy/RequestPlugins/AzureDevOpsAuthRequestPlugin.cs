@@ -17,7 +17,7 @@ namespace DevProxy
         Example tested API:
         Invoke-WebRequest -Proxy http://localhost:8888 -Uri https://vsblob.dev.azure.com/mseng/_apis/blob/blobs/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00/url
     */
-    public class AzureDevOpsAuthPlugin : Plugin<AzureDevOpsAuthPlugin.Token>
+    public class AzureDevOpsAuthRequestPlugin : RequestPlugin<AzureDevOpsAuthRequestPlugin.Token>
     {
         private static readonly string[] HostsSuffixes = { "dev.azure.com", "visualstudio.com" };
         
@@ -25,7 +25,7 @@ namespace DevProxy
         {
             return HostsSuffixes.Any(h => host.EndsWith(h));
         }
-        public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
+        public override async Task<RequestPluginResult> BeforeRequestAsync(PluginRequest r)
         {
             var url = new Uri(r.Request.Url);
             if (IsHostRelevant(url.Host))
@@ -42,21 +42,21 @@ namespace DevProxy
                 }
             }
 
-            return PluginResult.Continue;
+            return RequestPluginResult.Continue;
         }
 
-        public override Task<PluginResult> BeforeResponseAsync(PluginRequest r)
+        public override Task<RequestPluginResult> BeforeResponseAsync(PluginRequest r)
         {
             if (r.Data != null)
             {
                 r.Response.Headers.AddHeader(new HttpHeader(
-                    $"X-DevProxy-{nameof(AzureDevOpsAuthPlugin)}-TokenType",
+                    $"X-DevProxy-{nameof(AzureDevOpsAuthRequestPlugin)}-TokenType",
                     r.Data.TokenType.ToString()));
                 r.Response.Headers.AddHeader(new HttpHeader(
-                    $"X-DevProxy-{nameof(AzureDevOpsAuthPlugin)}-TokenSHA512",
+                    $"X-DevProxy-{nameof(AzureDevOpsAuthRequestPlugin)}-TokenSHA512",
                     r.Data.TokenValueSHA512));
             }
-            return Task.FromResult(PluginResult.Continue);
+            return Task.FromResult(RequestPluginResult.Continue);
         }
 
         

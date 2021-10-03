@@ -5,45 +5,33 @@ using Titanium.Web.Proxy.Http;
 
 namespace DevProxy
 {
-    public interface IAuthPlugin
-    {
-        Task<(AuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args);
-    }
-
-    public enum AuthPluginResult
-    {
-        NoOpinion,
-        Authenticated,
-        Rejected,
-    }
-
-    public enum PluginResult
+    public enum RequestPluginResult
     {
         Continue,
         Stop
     }
 
-    public interface IPlugin
+    public interface IRequestPlugin
     {
         bool IsHostRelevant(string host);
-        Task<PluginResult> BeforeRequestAsync(SessionEventArgs args);
-        Task<PluginResult> BeforeResponseAsync(SessionEventArgs args);
+        Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args);
+        Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args);
     }
 
-    public abstract class Plugin : Plugin<object> { }
+    public abstract class RequestPlugin : RequestPlugin<object> { }
 
-    public abstract class Plugin<T> : IPlugin where T : class
+    public abstract class RequestPlugin<T> : IRequestPlugin where T : class
     {
-        public abstract Task<PluginResult> BeforeRequestAsync(PluginRequest request);
+        public abstract Task<RequestPluginResult> BeforeRequestAsync(PluginRequest request);
 
-        public Task<PluginResult> BeforeRequestAsync(SessionEventArgs args)
+        public Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args)
         {
             return BeforeRequestAsync(new PluginRequest(this, args));
         }
 
-        public abstract Task<PluginResult> BeforeResponseAsync(PluginRequest request);
+        public abstract Task<RequestPluginResult> BeforeResponseAsync(PluginRequest request);
 
-        public Task<PluginResult> BeforeResponseAsync(SessionEventArgs args)
+        public Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args)
         {
             return BeforeResponseAsync(new PluginRequest(this, args));
         }
@@ -52,13 +40,13 @@ namespace DevProxy
 
         public class PluginRequest
         {
-            public PluginRequest(Plugin<T> plugin, SessionEventArgs args)
+            public PluginRequest(RequestPlugin<T> plugin, SessionEventArgs args)
             {
                 Plugin = plugin;
                 Args = args;
             }
 
-            public readonly Plugin<T> Plugin;
+            public readonly RequestPlugin<T> Plugin;
             public readonly SessionEventArgs Args;
 
             public Request Request => Args.HttpClient.Request;
@@ -85,7 +73,7 @@ namespace DevProxy
                 }
             }
 
-            private Dictionary<IPlugin, object> AllData => (Args.GetRequestContext()).PluginData;
+            private Dictionary<IRequestPlugin, object> AllData => (Args.GetRequestContext()).PluginData;
         }
     }
 }

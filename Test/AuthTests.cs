@@ -54,17 +54,17 @@ namespace Test
             Assert.AreEqual(HttpStatusCode.ProxyAuthenticationRequired, response.StatusCode);
         }
 
-        private class HttpsInterceptAllPlugin : IPlugin
+        private class HttpsInterceptAllPlugin : IRequestPlugin
         {
-            public Task<PluginResult> BeforeRequestAsync(SessionEventArgs args)
+            public Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args)
             {
                 args.GenericResponse("Intercepted.", HttpStatusCode.OK);
-                return Task.FromResult(PluginResult.Stop);
+                return Task.FromResult(RequestPluginResult.Stop);
             }
 
-            public Task<PluginResult> BeforeResponseAsync(SessionEventArgs args)
+            public Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args)
             {
-                return Task.FromResult(PluginResult.Continue);
+                return Task.FromResult(RequestPluginResult.Continue);
             }
 
             public bool IsHostRelevant(string host)
@@ -76,7 +76,7 @@ namespace Test
         [TestMethod]
         public async Task HttpsInterceptAuthOK()
         {
-            IPlugin plugin = new HttpsInterceptAllPlugin();
+            IRequestPlugin plugin = new HttpsInterceptAllPlugin();
             try
             {
                 _env.proxy.plugins.Add(plugin);
@@ -89,16 +89,16 @@ namespace Test
             }
         }
 
-        private class NeverCalledPlugin : IPlugin
+        private class NeverCalledPlugin : IRequestPlugin
         {
             public volatile int TimesCalled = 0;
-            public Task<PluginResult> BeforeRequestAsync(SessionEventArgs args)
+            public Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args)
             {
                 Interlocked.Increment(ref TimesCalled);
                 throw new NotImplementedException();
             }
 
-            public Task<PluginResult> BeforeResponseAsync(SessionEventArgs args)
+            public Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args)
             {
                 Interlocked.Increment(ref TimesCalled);
                 throw new NotImplementedException();

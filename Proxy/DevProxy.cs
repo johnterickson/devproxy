@@ -40,8 +40,8 @@ namespace DevProxy
 
         private Ipc ipcServer;
 
-        public List<IAuthPlugin> authPlugins = new List<IAuthPlugin>();
-        public List<IPlugin> plugins = new List<IPlugin>();
+        public List<IProxyAuthPlugin> authPlugins = new List<IProxyAuthPlugin>();
+        public List<IRequestPlugin> plugins = new List<IRequestPlugin>();
 
         public string rootPfx;
         public string rootPem;
@@ -196,7 +196,7 @@ namespace DevProxy
             foreach (var plugin in plugins)
             {
                 var result = await plugin.BeforeRequestAsync(args);
-                if (result == PluginResult.Stop)
+                if (result == RequestPluginResult.Stop)
                 {
                     return;
                 }
@@ -219,7 +219,7 @@ namespace DevProxy
                 foreach (var plugin in plugins.AsEnumerable().Reverse())
                 {
                     var result = await plugin.BeforeResponseAsync(args);
-                    if (result == PluginResult.Stop)
+                    if (result == RequestPluginResult.Stop)
                     {
                         return;
                     }
@@ -279,12 +279,12 @@ namespace DevProxy
                     var (result, notes) = await plugin.BeforeRequestAsync(args);
                     ctxt.AuthToProxyNotes.Add((plugin, $"{result.ToString()}_{notes}"));
 
-                    if (result == AuthPluginResult.Authenticated)
+                    if (result == ProxyAuthPluginResult.Authenticated)
                     {
                         ctxt.IsAuthenticated = true;
                         break;
                     }
-                    else if (result == AuthPluginResult.Rejected)
+                    else if (result == ProxyAuthPluginResult.Rejected)
                     {
                         break;
                     }

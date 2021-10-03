@@ -82,11 +82,12 @@ namespace DevProxy
                 }
             }
             
-            proxy.authPlugins.Add(new ProxyPasswordAuthPlugin(proxy.proxyPassword));
-            proxy.authPlugins.Add(new ProcessTreeAuthPlugin(proxy.processTracker));
+            proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
+            proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
+            proxy.authPlugins.Add(new ProcessTreeProxyAuthPlugin(proxy.processTracker));
 
-            proxy.plugins.Add(new BlobStoreCachePlugin());
-            proxy.plugins.Add(new AzureDevOpsAuthPlugin());
+            proxy.plugins.Add(new BlobStoreCacheRequestPlugin());
+            proxy.plugins.Add(new AzureDevOpsAuthRequestPlugin());
             
             await proxy.StartAsync();
             

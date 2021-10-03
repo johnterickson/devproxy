@@ -32,7 +32,7 @@ namespace Test
                 var proxy = new DevProxy.DevProxy();
                 proxy.pipeName = Guid.NewGuid().ToString("N");
                 proxy.proxyPort = p;
-                proxy.authPlugins.Add(new ProxyPasswordAuthPlugin(proxy.proxyPassword));
+                proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
                 await proxy.StartAsync();
                 return proxy;
             });

@@ -9,10 +9,10 @@ namespace DevProxy
 {
     public class RequestContext
     {
-        public readonly Dictionary<IPlugin, object> PluginData = new Dictionary<IPlugin, object>();
+        public readonly Dictionary<IRequestPlugin, object> PluginData = new Dictionary<IRequestPlugin, object>();
         public bool IsConnectAuthenticated = false;
         public bool IsRequestAuthenticated = false;
-        public List<(IAuthPlugin, string)> AuthToProxyNotes = new List<(IAuthPlugin, string)>();
+        public List<(IProxyAuthPlugin, string)> AuthToProxyNotes = new List<(IProxyAuthPlugin, string)>();
         public SessionEventArgsBase Args;
 
         public RequestContext(SessionEventArgsBase args)

@@ -4,16 +4,16 @@ using Titanium.Web.Proxy.EventArguments;
 
 namespace DevProxy
 {
-    public class ProcessTreeAuthPlugin : IAuthPlugin
+    public class ProcessTreeProxyAuthPlugin : IProxyAuthPlugin
     {
         private readonly ProcessTracker _processTracker;
 
-        public ProcessTreeAuthPlugin(ProcessTracker processTracker)
+        public ProcessTreeProxyAuthPlugin(ProcessTracker processTracker)
         {
             _processTracker = processTracker;
         }
 
-        public async Task<(AuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args)
+        public async Task<(ProxyAuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args)
         {
             var connections = await ProcessTcpConnection.FindConnectionsAsync();
             var connection = connections.FirstOrDefault(c =>
@@ -23,18 +23,18 @@ namespace DevProxy
             var ctxt = args.GetRequestContext();
             if (connection == null)
             {
-                return (AuthPluginResult.NoOpinion,"ConnectionNotFound");
+                return (ProxyAuthPluginResult.NoOpinion,"ConnectionNotFound");
             }
             else
             {
                 var (found, authRootProcessId) = await _processTracker.TryGetAuthRootAsync(connection.ProcessId);
                 if (found)
                 {
-                    return (AuthPluginResult.Authenticated,$"RootProcessId={authRootProcessId}");
+                    return (ProxyAuthPluginResult.Authenticated,$"RootProcessId={authRootProcessId}");
                 }
                 else
                 {
-                    return (AuthPluginResult.NoOpinion,$"NoAuthRootForProcessId={connection.ProcessId}");
+                    return (ProxyAuthPluginResult.NoOpinion,$"NoAuthRootForProcessId={connection.ProcessId}");
                 }
             }
         }

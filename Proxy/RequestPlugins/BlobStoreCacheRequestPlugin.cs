@@ -29,7 +29,7 @@ namespace DevProxy
         Example tested API:
         Invoke-WebRequest -Proxy http://localhost:8888 -Uri "Invoke-WebRequest -Proxy http://localhost:8888 -Uri "https://4fdvsblobprodwcus012.blob.core.windows.net/b-0efb4611d5654cd19a647d6cb6d7d5f0/1E761B9ED61FA4F3D47258FB4F4E04751FE9D01C4A5360D4F81791AA60BFFD0D00.blob?sv=2019-07-07&sr=b&si=1&sig=REDACTED&spr=https&se=2021-09-24T00%3A03%3A33Z&rscl=x-e2eid-36b718fd-c0064fe3-9c4a9a47-fe7890a2-session-36b718fd-c0064fe3-9c4a9a47-fe7890a2"
     */
-    public class BlobStoreCachePlugin : Plugin<RequestInfo>
+    public class BlobStoreCacheRequestPlugin : RequestPlugin<RequestInfo>
     {
         private static readonly string[] HostsSuffixes = { "blob.core.windows.net", "vsblob.vsassets.io" };
         private static readonly Regex[] _urlRegexes = new[]
@@ -49,7 +49,7 @@ namespace DevProxy
         private readonly IContentStore _contentStore;
         private readonly IContentSession _contentSession;
 
-        public BlobStoreCachePlugin()
+        public BlobStoreCacheRequestPlugin()
         {
             _contentStore = new FileSystemContentStore(
                 new PassThroughFileSystem(logger: null),
@@ -71,7 +71,7 @@ namespace DevProxy
             _contentSession = _contentStore.CreateSession(context, "devproxy", ImplicitPin.None).Session;
         }
 
-        public override async Task<PluginResult> BeforeRequestAsync(PluginRequest r)
+        public override async Task<RequestPluginResult> BeforeRequestAsync(PluginRequest r)
         {
             var url = new Uri(r.Request.Url);
 
@@ -79,13 +79,13 @@ namespace DevProxy
             if (range != null)
             {
                 // TODO: Support range requests
-                return PluginResult.Continue;
+                return RequestPluginResult.Continue;
             }
 
             Match match = _urlRegexes.Select(u => u.Match(url.AbsoluteUri)).FirstOrDefault(m => m.Success);
             if (match == null || match.Groups.Count != 2)
             {
-                return PluginResult.Continue;
+                return RequestPluginResult.Continue;
             }
 
             string hashString = match.Groups[1].Value;
@@ -95,7 +95,7 @@ namespace DevProxy
             byte[] hashBytes;
             if (!HexUtilities.TryToByteArray(hashString, out hashBytes))
             {
-                return PluginResult.Continue;
+                return RequestPluginResult.Continue;
             }
 
             HashType hashType;
@@ -105,7 +105,7 @@ namespace DevProxy
                     hashType = HashType.Vso0;
                     break;
                 default:
-                    return PluginResult.Continue;
+                    return RequestPluginResult.Continue;
             }
 
             ContentHash hash = ContentHash.FromFixedBytes(hashType, new ReadOnlyFixedBytes(hashBytes, 33, 0));
@@ -138,20 +138,20 @@ namespace DevProxy
                     };
                     r.Args.GenericResponse(body, HttpStatusCode.OK, headers, closeServerConnection: false);
                 }
-                return PluginResult.Stop;
+                return RequestPluginResult.Stop;
             }
             else
             {
                 // Console.WriteLine($"Blob not in cache {hash.Serialize()}.");
-                return PluginResult.Continue;
+                return RequestPluginResult.Continue;
             }
         }
 
-        public override async Task<PluginResult> BeforeResponseAsync(PluginRequest r)
+        public override async Task<RequestPluginResult> BeforeResponseAsync(PluginRequest r)
         {
             if (r.Data == null)
             {
-                return PluginResult.Continue;
+                return RequestPluginResult.Continue;
             }
 
             r.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
@@ -167,7 +167,7 @@ namespace DevProxy
                 }
             }
 
-            return PluginResult.Continue;
+            return RequestPluginResult.Continue;
         }
     }
 

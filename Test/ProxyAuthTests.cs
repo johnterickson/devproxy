@@ -9,7 +9,7 @@ using System.Threading;
 namespace Test
 {
     [TestClass]
-    public class AuthTests
+    public class ProxyAuthTests
     {
         private static TestEnvironment _env;
 

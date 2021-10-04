@@ -30,6 +30,7 @@ namespace Test
         {
             var (_, proxy) = await TestHelpers.CreateWithRandomPort(async p => {
                 var proxy = new DevProxy.DevProxy();
+                proxy.wsl2hostIp = null;
                 proxy.pipeName = Guid.NewGuid().ToString("N");
                 proxy.proxyPort = p;
                 proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));

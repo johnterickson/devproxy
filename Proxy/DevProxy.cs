@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -30,7 +32,7 @@ namespace DevProxy
         public string pipeName;
 
         public int proxyPort = 8888;
-        public string wsl2hostIp = "172.28.160.1";
+        public UnicastIPAddressInformation wsl2hostIp;
 
         public bool logRequests = false;
         public int maxCachedConnectionsPerHost = 64;
@@ -53,6 +55,17 @@ namespace DevProxy
             pipeName = "devproxy";
 
             proxyPassword = HasherHelper.HashSecret(baseSecret + DateTime.Now.ToLongDateString());
+
+            foreach(var i in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (i.Name == "vEthernet (WSL)")
+                {
+                    var props = i.GetIPProperties();
+                    var addresses = props.UnicastAddresses;
+                    wsl2hostIp = addresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
+                    break;
+                }
+            }
         }
 
         public void Dispose()
@@ -97,6 +110,8 @@ namespace DevProxy
 
         public async Task StartAsync()
         {
+
+
             proxy.MaxCachedConnections = maxCachedConnectionsPerHost;
 
             if (!string.IsNullOrEmpty(upstreamHttpProxy))
@@ -129,9 +144,10 @@ namespace DevProxy
 
             createEndpoint(IPAddress.Loopback);
 
-            if (!string.IsNullOrEmpty(wsl2hostIp))
+            if (wsl2hostIp != null)
             {
-                createEndpoint(IPAddress.Parse(wsl2hostIp));
+                await OpenFirewallToWSL2Async();
+                createEndpoint(wsl2hostIp.Address);
             }
 
             await EnsureRootCertIsInstalledAsync();
@@ -292,52 +308,70 @@ namespace DevProxy
             }
         }
 
+        private static SemaphoreSlim _installRootLock = new SemaphoreSlim(1,1);
+
         private async Task EnsureRootCertIsInstalledAsync()
         {
-            var certStorage = new UserProfileCertificateStorage();
-
-            proxy.CertificateManager.CertificateStorage = certStorage;
-            proxy.CertificateManager.RootCertificateName = Environment.ExpandEnvironmentVariables("DevProxy for %USERNAME%");
-            proxy.CertificateManager.RootCertificateIssuerName = "DevProxy";
-            proxy.CertificateManager.PfxFilePath = "devproxy.pfx";
-            proxy.CertificateManager.PfxPassword = "devproxy";
-
-            if (null == proxy.CertificateManager.LoadRootCertificate())
+            try
             {
-                proxy.CertificateManager.EnsureRootCertificate();
+                await _installRootLock.WaitAsync();
+                var certStorage = new UserProfileCertificateStorage();
+
+                proxy.CertificateManager.CertificateStorage = certStorage;
+                proxy.CertificateManager.RootCertificateName = Environment.ExpandEnvironmentVariables("DevProxy for %USERNAME%");
+                proxy.CertificateManager.RootCertificateIssuerName = "DevProxy";
+                proxy.CertificateManager.PfxFilePath = "devproxy.pfx";
+                proxy.CertificateManager.PfxPassword = "devproxy";
+
+                if (null == proxy.CertificateManager.LoadRootCertificate())
+                {
+                    proxy.CertificateManager.EnsureRootCertificate();
+                }
+
+                rootPfx = certStorage.GetRootCertPath(proxy.CertificateManager.PfxFilePath);
+                rootPem = rootPfx.Replace(".pfx", ".pem");
+
+                if (!File.Exists(rootPem))
+                {
+                    string gitPath = await ProcessHelpers.RunAsync("where.exe", "git.exe");
+                    gitPath = Path.GetDirectoryName(gitPath);
+                    gitPath = Path.GetDirectoryName(gitPath);
+                    string opensslPath = Path.Combine(gitPath, "mingw64", "bin", "openssl.exe");
+                    await ProcessHelpers.RunAsync(opensslPath, $"pkcs12 -in \"{rootPfx}\" -out \"{rootPem}\" -password pass:{proxy.CertificateManager.PfxPassword} -nokeys");
+                }
             }
-
-            rootPfx = certStorage.GetRootCertPath(proxy.CertificateManager.PfxFilePath);
-            rootPem = rootPfx.Replace(".pfx", ".pem");
-
-            if (!File.Exists(rootPem))
+            finally
             {
-                string gitPath = await ProcessHelpers.RunAsync("where.exe", "git.exe");
-                gitPath = Path.GetDirectoryName(gitPath);
-                gitPath = Path.GetDirectoryName(gitPath);
-                string opensslPath = Path.Combine(gitPath, "mingw64", "bin", "openssl.exe");
-                await ProcessHelpers.RunAsync(opensslPath, $"pkcs12 -in \"{rootPfx}\" -out \"{rootPem}\" -password pass:{proxy.CertificateManager.PfxPassword} -nokeys");
+                _installRootLock.Release();
             }
+        }
 
-            var netstatRegex = new Regex(
-                @"^\s+TCP\s+[0-9\.]+:([0-9]+)\s+[0-9\.]+:" + proxyPort + @"\s+ESTABLISHED\s+([0-9]+)$",
-                RegexOptions.Compiled | RegexOptions.Multiline
-            );
-
-            if (wsl2hostIp != null)
+        private static SemaphoreSlim _firewallLock = new SemaphoreSlim(1,1);
+        private async Task OpenFirewallToWSL2Async()
+        {
+            string ruleName = $"DevProxy listening to {proxyPort} from WSL2 {wsl2hostIp.Address}/{wsl2hostIp.PrefixLength}";
+            try
             {
+                await _firewallLock.WaitAsync();
                 string existingRule = await ProcessHelpers.RunAsync(
                     "powershell",
-                    "-Command \"Get-NetFirewallRule -DisplayName 'DevProxy from WSL2' -ErrorAction SilentlyContinue\""
+                    $"-Command \"Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue\""
                 );
-                if (!existingRule.Contains("DevProxy from WSL2"))
+                
+                if (!existingRule.Contains(ruleName))
                 {
                     await ProcessHelpers.RunAsync(
                         "powershell",
-                        "-Command \"New-NetFireWallRule -DisplayName 'DevProxy from WSL2' -Direction Inbound -LocalPort 8888 -Action Allow -Protocol TCP -LocalAddress '172.28.160.1' -RemoteAddress '172.28.160.1/20'\"",
+                        $"-Command \"New-NetFireWallRule -DisplayName '{ruleName}' -Direction Inbound -LocalPort {proxyPort} -Action Allow -Protocol TCP " +
+                        $"-LocalAddress '{wsl2hostIp.Address}' " + 
+                        $"-RemoteAddress '{wsl2hostIp.Address}/{wsl2hostIp.PrefixLength}'\"",
                         admin: true
                     );
                 }
+            }
+            finally
+            {
+                _firewallLock.Release();
             }
         }
     }

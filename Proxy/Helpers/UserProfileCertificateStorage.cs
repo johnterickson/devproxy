@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Integrative.Encryption;
 using Titanium.Web.Proxy.Network;
 
 namespace DevProxy
@@ -42,7 +44,8 @@ namespace DevProxy
             Directory.CreateDirectory(folderPath);
             var path = Path.Combine(folderPath, $"notroot.{subjectName}.pfx");
             byte[] exported = certificate.Export(X509ContentType.Pkcs12);
-            File.WriteAllBytes(path, exported);
+            var encrypted = CrossProtect.Protect(exported, null, DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(path, encrypted);
         }
 
         public void SaveRootCertificate(string pathOrName, string password, X509Certificate2 certificate)
@@ -50,7 +53,8 @@ namespace DevProxy
             Directory.CreateDirectory(folderPath);
             var path = GetRootCertPath(pathOrName);
             byte[] exported = certificate.Export(X509ContentType.Pkcs12, password);
-            File.WriteAllBytes(path, exported);
+            var encrypted = CrossProtect.Protect(exported, null, DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(path, encrypted);
         }
 
         public string GetRootCertPath(string pathOrName) => Path.Combine(folderPath, $"root.{pathOrName}");
@@ -67,7 +71,8 @@ namespace DevProxy
 
             try
             {
-                exported = File.ReadAllBytes(path);
+                byte[] encrypted = File.ReadAllBytes(path);
+                exported = CrossProtect.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
             }
             catch (IOException)
             {

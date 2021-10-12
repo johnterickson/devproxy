@@ -247,18 +247,21 @@ namespace DevProxy
         {
             string host = args.HttpClient.Request.RequestUri.Host;
 
-            await InitRequestAsync(args);
-            var ctxt = args.GetRequestContext();
-            if (!ctxt.IsAuthenticated)
-            {
-                args.DenyConnect = true;
-                ctxt.ReturnProxy407();
-                ctxt.AddAuthNotesToResponse();
-                return;
-            }
-
             bool shouldDecrypt = plugins.Any(p => p.IsHostRelevant(host));
-            if (!shouldDecrypt)
+            if (shouldDecrypt)
+            {
+                await InitRequestAsync(args);
+                var ctxt = args.GetRequestContext();
+
+                if (!ctxt.IsAuthenticated)
+                {
+                    args.DenyConnect = true;
+                    ctxt.ReturnProxy407();
+                    ctxt.AddAuthNotesToResponse();
+                    return;
+                }
+            }
+            else
             {
                 args.DecryptSsl = false;
             }

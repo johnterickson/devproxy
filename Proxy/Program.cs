@@ -23,7 +23,10 @@ namespace DevProxy
                 return (i, key,value);
             }).ToArray();
 
-            Configuration config = new Configuration();
+            Configuration config = new Configuration()
+            {
+                proxy = new ProxyConfiguration(),
+            };
 
             var configKvp = argKvps.FirstOrDefault(arg => arg.key == "--config");
             if (configKvp.key != null)
@@ -52,10 +55,14 @@ namespace DevProxy
                         config.proxy.log_requests = bool.Parse(value);
                         break;
                     case "--password":
+                        config.proxy.password_type = "fixed";
                         config.proxy.fixed_password = new FixedPasswordConfiguration()
                         {
                             value = value
                         };
+                        break;
+                    case "--get_token":
+                    case "--run":
                         break;
                     default:
                         throw new ArgumentException($"Unknown argument: `{key}={value}`");

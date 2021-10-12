@@ -8,10 +8,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="2.19.1" />
-    <PackageReference Include="Titanium.Web.Proxy" Version="3.1.1397" />
+    <!-- <PackageReference Include="Titanium.Web.Proxy" Version="3.1.1397" /> -->
     <PackageReference Include="BuildXL.Cache.Libraries" Version="0.1.0-20210723.4" />
     <PackageReference Include="NETStandard.Library" Version="2.0.3" />
     <PackageReference Include="Integrative.CrossProtect" Version="0.1.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../titanium-web-proxy\src\Titanium.Web.Proxy\Titanium.Web.Proxy.NetCore.csproj" />
   </ItemGroup>
 
 </Project>

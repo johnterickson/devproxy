@@ -37,6 +37,13 @@ namespace DevProxy
 
         }
 
+        public override Task<RequestPluginResult> BeforeRequestAsync(PluginRequest r)
+        {
+            r.Request.Headers.RemoveHeader("Connection");
+            r.Request.Headers.AddHeader("Connection", "keep-alive");
+            return base.BeforeRequestAsync(r);
+        }
+
         protected override async Task<Token> GetAuthorizationHeaderTokenAsync(PluginRequest r)
         {
             if (r.Data != null)

@@ -2,7 +2,7 @@ using System;
 
 namespace DevProxy
 {
-    public sealed class FixedProxyPassword : IProxyPasword
+    public sealed class FixedProxyPassword : IProxyPassword
     {
         private readonly string password;
 

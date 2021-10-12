@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Threading;
@@ -132,6 +133,30 @@ namespace DevProxy
             {
                 createEndpoint(wsl2hostIp.Address);
             }
+
+            if (this.configuration.plugins != null)
+            {
+                foreach(var pluginConfig in this.configuration.plugins)
+                {
+                    string className = $"{nameof(DevProxy)}.{pluginConfig.class_name}";
+                    
+                    var pluginFactoryObject = Activator.CreateInstance(
+                        Assembly.GetExecutingAssembly().FullName,
+                        className).Unwrap();
+                    if (pluginFactoryObject is IRequestPluginFactory pluginFactory)
+                    {
+                        this.plugins.Add(pluginFactory.Create(pluginConfig.options));
+                    }
+                    else if (pluginFactoryObject is IProxyAuthPluginFactory authPluginFactory)
+                    {
+                        this.authPlugins.Add(authPluginFactory.Create(this.Passwords, pluginConfig.options));
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"{pluginFactoryObject.GetType().FullName} is not a pluginfactory.");
+                    }
+                }
+            }
         }
 
         private static CancellationTokenSource _shutdown = new CancellationTokenSource();
@@ -140,7 +165,7 @@ namespace DevProxy
 
         public readonly ProcessTracker processTracker = new ProcessTracker();
 
-        public readonly IProxyPasword Passwords;
+        public readonly IProxyPassword Passwords;
 
         public readonly string pipeName;
 

@@ -8,11 +8,11 @@ namespace DevProxy
     public abstract class GenericAuthorizationHeaderProxyAuthPlugin : IProxyAuthPlugin
     {
         protected abstract string HeaderName { get; }
-        private readonly string _proxyPasswordHash;
+        private readonly IProxyPassword _proxyPassword;
 
-        public GenericAuthorizationHeaderProxyAuthPlugin(string proxyPassword)
+        public GenericAuthorizationHeaderProxyAuthPlugin(IProxyPassword password)
         {
-            _proxyPasswordHash = HasherHelper.HashSecret(proxyPassword);
+            _proxyPassword = password;
         }
 
         public Task<(ProxyAuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args)
@@ -58,22 +58,19 @@ namespace DevProxy
                     return Task.FromResult((ProxyAuthPluginResult.NoOpinion, $"UnknownAuthScheme={scheme}"));
             }
 
-            string providedPasswordHash = HasherHelper.HashSecret(password);
-
-            if (providedPasswordHash == _proxyPasswordHash)
+            if (_proxyPassword.Check(password))
             {
                 ctxt.Request.Headers.RemoveHeader(HeaderName);
-                return Task.FromResult((ProxyAuthPluginResult.Authenticated, $"PasswordMatch_SHA512={_proxyPasswordHash}"));
+                return Task.FromResult((ProxyAuthPluginResult.Authenticated, $"PasswordMatch_SHA512={HasherHelper.HashSecret(password)}"));
             }
 
-            if (user != null && HasherHelper.HashSecret(user) == _proxyPasswordHash)
+            if (user != null && _proxyPassword.Check(user))
             {
                 ctxt.Request.Headers.RemoveHeader(HeaderName);
-                return Task.FromResult((ProxyAuthPluginResult.Authenticated, $"UserMatch_SHA512={_proxyPasswordHash}"));
+                return Task.FromResult((ProxyAuthPluginResult.Authenticated, $"UserMatch_SHA512={HasherHelper.HashSecret(user)}"));
             }
             
-            return Task.FromResult((ProxyAuthPluginResult.Rejected,
-                $"SHA512(ProvidedPassword)={providedPasswordHash}_SHA512(CorrectPassword)={_proxyPasswordHash}"));
+            return Task.FromResult((ProxyAuthPluginResult.Rejected, $"SHA512(ProvidedPassword)={HasherHelper.HashSecret(password)}"));
         }
     }
 }

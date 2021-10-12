@@ -18,6 +18,11 @@ namespace DevProxy
         Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args);
     }
 
+    public interface IRequestPluginFactory
+    {
+        IRequestPlugin Create(Dictionary<string, object> options);
+    }
+
     public abstract class RequestPlugin : RequestPlugin<object> { }
 
     public abstract class RequestPlugin<T> : IRequestPlugin where T : class

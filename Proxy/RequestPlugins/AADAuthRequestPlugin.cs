@@ -13,7 +13,7 @@ using Titanium.Web.Proxy.Models;
 namespace DevProxy
 {
     // Hopefully Kyle will fix this or I can shell out to his tool??
-    public class AADAuthRequestPlugin : RequestPlugin<AADAuthRequestPlugin.Token>
+    public abstract class AADAuthRequestPlugin : RequestPlugin<AADAuthRequestPlugin.Token>
     {
         private readonly string[] _hostsSuffixes;
         private readonly string[] _scopes;

@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace DevProxy
 {
-    public sealed class RotatingPassword : IProxyPasword
+    public sealed class RotatingPassword : IProxyPassword
     {
         private sealed class Password
         {

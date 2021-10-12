@@ -9,8 +9,16 @@ using Microsoft.Identity.Client;
 
 namespace DevProxy
 {
+    public class ACRAuthRequestPlugin : IRequestPluginFactory
+    {
+        public IRequestPlugin Create(Dictionary<string, object> options)
+        {
+            return new ACRAuthRequestPluginInstance();
+        }
+    }
+
     // https://github.com/Azure/acr/blob/main/docs/AAD-OAuth.md
-    public class ACRAuthRequestPlugin : AADAuthRequestPlugin
+    public class ACRAuthRequestPluginInstance : AADAuthRequestPlugin
     {
         // https://github.com/Azure/azure-sdk-for-java/blob/6c61e2bd69491085af49658b1b136d42499b4b35/sdk/containerregistry/azure-containers-containerregistry/src/main/java/com/azure/containers/containerregistry/models/ContainerRegistryAudience.java#L23
         private const string Resource = "https://management.azure.com/.default";
@@ -32,7 +40,7 @@ namespace DevProxy
 
         private readonly Dictionary<string, Registry> _registries = new Dictionary<string, Registry>();
 
-        public ACRAuthRequestPlugin() : base(new[] { "azurecr.io" }, new[] { Resource })
+        public ACRAuthRequestPluginInstance() : base(new[] { "azurecr.io" }, new[] { Resource })
         {
 
         }

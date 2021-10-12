@@ -2,7 +2,7 @@ namespace DevProxy
 {
     public class AuthorizationHeaderProxyAuthPlugin : GenericAuthorizationHeaderProxyAuthPlugin
     {
-        public AuthorizationHeaderProxyAuthPlugin(string proxyPassword) : base(proxyPassword)
+        public AuthorizationHeaderProxyAuthPlugin(IProxyPassword proxyPassword) : base(proxyPassword)
         {
         }
 

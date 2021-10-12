@@ -1,8 +1,18 @@
+using System.Collections.Generic;
+
 namespace DevProxy
 {
-    public class ProxyAuthorizationHeaderProxyAuthPlugin : GenericAuthorizationHeaderProxyAuthPlugin
+    public class ProxyAuthorizationHeaderProxyAuthPlugin : IProxyAuthPluginFactory
     {
-        public ProxyAuthorizationHeaderProxyAuthPlugin(string proxyPassword) : base(proxyPassword)
+        public IProxyAuthPlugin Create(IProxyPassword password, Dictionary<string, object> options)
+        {
+            return new ProxyAuthorizationHeaderProxyAuthPluginInstance(password);
+        }
+    }
+
+    public class ProxyAuthorizationHeaderProxyAuthPluginInstance : GenericAuthorizationHeaderProxyAuthPlugin
+    {
+        public ProxyAuthorizationHeaderProxyAuthPluginInstance(IProxyPassword password) : base(password)
         {
         }
 

@@ -103,13 +103,13 @@ namespace DevProxy
                 }
             }
 
-            proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
-            proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
+            proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.Passwords));
+            proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPluginInstance(proxy.Passwords));
             proxy.authPlugins.Add(new ProcessTreeProxyAuthPlugin(proxy.processTracker));
 
             proxy.plugins.Add(new BlobStoreCacheRequestPlugin());
             proxy.plugins.Add(new AzureDevOpsAuthRequestPlugin());
-            proxy.plugins.Add(new ACRAuthRequestPlugin());
+            proxy.plugins.Add(new ACRAuthRequestPluginInstance());
             
             await proxy.StartAsync();
             

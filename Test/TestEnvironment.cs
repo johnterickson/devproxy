@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace DevProxy
 {
@@ -28,6 +29,8 @@ namespace DevProxy
         public static async Task<TestEnvironment> CreateAsync()
         {
             var (_, proxy) = await TestHelpers.CreateWithRandomPort(async p => {
+                string password = Guid.NewGuid().ToString("N");
+
                 var config = new Configuration()
                 {
                     proxy = new ProxyConfiguration()
@@ -35,10 +38,23 @@ namespace DevProxy
                         listen_to_wsl2 = false,
                         ipcPipeName = Guid.NewGuid().ToString("N"),
                         port = p,
+                        password_type = "fixed",
+                        fixed_password = new FixedPasswordConfiguration()
+                        {
+                            value = password,
+                        }
+                    },
+                    plugins = new PluginConfiguration[] {
+                        new PluginConfiguration()
+                        {
+                            class_name = nameof(ProxyAuthorizationHeaderProxyAuthPlugin),
+                            options = new Dictionary<string, object>(){
+                                {"password", password}
+                            }
+                        }
                     }
                 };
                 var proxy = new DevProxy(config);
-                proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
                 await proxy.StartAsync();
                 return proxy;
             });

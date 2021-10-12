@@ -20,7 +20,7 @@ namespace Test
             this.proxy = proxy;
             this.server = testServer;
 
-            var creds = new NetworkCredential("user", proxy.proxyPassword);
+            var creds = new NetworkCredential("user", proxy.Passwords.GetCurrent());
             this.authClient = new HttpClient(TestHelpers.CreateHandler(proxy.proxyPort, proxy.rootCert, creds));;
             this.noAuthClient = new HttpClient(TestHelpers.CreateHandler(proxy.proxyPort, proxy.rootCert, null));;
             this.serverUri = new Uri(this.server.Prefixes.Single());
@@ -33,7 +33,7 @@ namespace Test
                 proxy.wsl2hostIp = null;
                 proxy.pipeName = Guid.NewGuid().ToString("N");
                 proxy.proxyPort = p;
-                proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
+                proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
                 await proxy.StartAsync();
                 return proxy;
             });

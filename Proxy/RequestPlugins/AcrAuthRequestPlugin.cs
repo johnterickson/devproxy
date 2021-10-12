@@ -90,9 +90,10 @@ namespace DevProxy
                     p => p[0],
                     p => p[1].Trim('"'));
 
-            string missingScope = kvps["scope"];
             string registry = kvps["service"];
             kvps.TryGetValue("error", out string error);
+            kvps.TryGetValue("scope", out string missingScope);
+            missingScope = missingScope ?? "registry:catalog:*";
 
             if (!_registries.TryGetValue(registry, out Registry reg))
             {
@@ -101,9 +102,9 @@ namespace DevProxy
             }
 
             var allScopesToRequest = new HashSet<string>();
-            foreach(var scopesList in reg.ScopedATs.Keys)
+            foreach (var scopesList in reg.ScopedATs.Keys)
             {
-                foreach(string s in scopesList.Split("|||"))
+                foreach (string s in scopesList.Split("|||"))
                 {
                     allScopesToRequest.Add(s);
                 }
@@ -132,16 +133,16 @@ namespace DevProxy
                 reg.RefreshToken = await GetRefreshTokenAsync(reg, req);
             }
 
-            var tokenRequestPairs = new List<KeyValuePair<string,string>>() {
+            var tokenRequestPairs = new List<KeyValuePair<string, string>>() {
                 new KeyValuePair<string,string>("grant_type","refresh_token"),
                 new KeyValuePair<string,string>("service", reg.HostName),
                 new KeyValuePair<string,string>("refresh_token", reg.RefreshToken),
             };
 
             NormalizeScopeSet(allScopesToRequest);
-            foreach(var s in allScopesToRequest)
+            foreach (var s in allScopesToRequest)
             {
-                tokenRequestPairs.Add(new KeyValuePair<string,string>("scope", s));
+                tokenRequestPairs.Add(new KeyValuePair<string, string>("scope", s));
             }
 
             var content = new FormUrlEncodedContent(tokenRequestPairs);
@@ -168,9 +169,9 @@ namespace DevProxy
             {
                 fixedSomething = false;
 
-                foreach(var s1 in scopes)
+                foreach (var s1 in scopes)
                 {
-                    foreach(var s2 in scopes)
+                    foreach (var s2 in scopes)
                     {
                         if (s1.Length > s2.Length && s1.Contains(s2))
                         {

@@ -1,21 +1,20 @@
 using System;
 using System.Net;
 using System.Net.Http;
-using DevProxy;
 using System.Threading.Tasks;
 using System.Linq;
 
-namespace Test
+namespace DevProxy
 {
     internal sealed class TestEnvironment : IDisposable
     {
-        public readonly DevProxy.DevProxy proxy;
+        public readonly DevProxy proxy;
         public readonly HttpListener server;
         public readonly HttpClient authClient;
         public readonly HttpClient noAuthClient;
         public readonly Uri serverUri;
 
-        private TestEnvironment(DevProxy.DevProxy proxy, HttpListener testServer)
+        private TestEnvironment(DevProxy proxy, HttpListener testServer)
         {
             this.proxy = proxy;
             this.server = testServer;
@@ -29,10 +28,16 @@ namespace Test
         public static async Task<TestEnvironment> CreateAsync()
         {
             var (_, proxy) = await TestHelpers.CreateWithRandomPort(async p => {
-                var proxy = new DevProxy.DevProxy();
-                proxy.wsl2hostIp = null;
-                proxy.pipeName = Guid.NewGuid().ToString("N");
-                proxy.proxyPort = p;
+                var config = new Configuration()
+                {
+                    proxy = new ProxyConfiguration()
+                    {
+                        listen_to_wsl2 = false,
+                        ipcPipeName = Guid.NewGuid().ToString("N"),
+                        port = p,
+                    }
+                };
+                var proxy = new DevProxy(config);
                 proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
                 await proxy.StartAsync();
                 return proxy;

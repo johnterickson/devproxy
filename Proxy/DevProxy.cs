@@ -19,28 +19,144 @@ namespace DevProxy
 {
     public sealed class DevProxy : IDisposable
     {
+        public readonly Configuration configuration;
+
+        public DevProxy(Configuration configuration)
+        {
+            this.configuration = configuration;
+            this.configuration.proxy = this.configuration.proxy ?? new ProxyConfiguration();
+            
+            this.pipeName = configuration.proxy.ipcPipeName ?? "devproxy";
+            this.ipcServer = new Ipc(pipeName, HandleIpc);
+
+            this.proxyPort = configuration.proxy.port ?? 8888;
+            this.logRequests = configuration.proxy.log_requests ?? false;
+
+            string password_type = configuration.proxy.password_type ?? "rotating";
+
+            this.ListenToWSL2 = configuration.proxy.listen_to_wsl2 ?? true;
+
+            switch(password_type)
+            {
+                case "fixed":
+                    this.Passwords = new FixedProxyPassword(this.configuration.proxy.fixed_password.value);
+                    break;
+                case "rotating":
+                    if (configuration.proxy.rotating_password == null)
+                    {
+                        configuration.proxy.rotating_password = new RotatingPasswordConfiguration()
+                        {
+                            base_secret = "SomethingBetterHere",
+                            generate_new_every_seconds = 3600,
+                            passwords_lifetime_seconds = 24*3600,
+                        };
+                    }
+                    var config = configuration.proxy.rotating_password;
+
+                    this.Passwords = new RotatingPassword(
+                        maxDuration: TimeSpan.FromSeconds(config.passwords_lifetime_seconds ?? 24*3600),
+                        baseSecret: config.base_secret,
+                        rotationRate: TimeSpan.FromSeconds(config.generate_new_every_seconds ?? 3600)
+                    );
+                    break;
+                default:
+                    throw new ArgumentException("unknown password type: " + password_type);
+            }
+
+            this.proxy.MaxCachedConnections = configuration.proxy.max_cached_connections_per_host ?? 64;
+
+            string upstreamHttpProxy =
+                configuration.proxy.upstream_http_proxy
+                    ?? Environment.GetEnvironmentVariable("http_proxy");
+            if (!string.IsNullOrEmpty(upstreamHttpProxy))
+            {
+                this.proxy.UpStreamHttpProxy = ParseProxy(upstreamHttpProxy);
+            }
+
+            string upstreamHttpsProxy = 
+                configuration.proxy.upstream_https_proxy 
+                    ?? Environment.GetEnvironmentVariable("https_proxy");
+            if (!string.IsNullOrEmpty(upstreamHttpsProxy))
+            {
+                var httpsProxy = ParseProxy(upstreamHttpsProxy);
+                this.proxy.UpStreamHttpsProxy = httpsProxy;
+
+                var upstream = new WebProxy(httpsProxy.HostName, httpsProxy.Port);
+                upstream.UseDefaultCredentials = false;
+
+                var handler = new HttpClientHandler();
+                handler.Proxy = upstream;
+                handler.UseProxy = true;
+
+                HttpClient = new HttpClient(handler);
+            }
+            else
+            {
+                HttpClient = new HttpClient();
+            }
+
+            proxy.BeforeRequest += OnBeforeRequestAsync;
+            proxy.BeforeResponse += OnBeforeResponseAsync;
+
+            proxy.OnServerConnectionCreate += (sender, args) =>
+            {
+                // Console.WriteLine("Connected to remote: " + args.RemoteEndPoint.ToString());
+                return Task.CompletedTask;
+            };
+
+
+            if (this.ListenToWSL2)
+            {
+                foreach(var i in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (i.Name == "vEthernet (WSL)")
+                    {
+                        var props = i.GetIPProperties();
+                        var addresses = props.UnicastAddresses;
+                        wsl2hostIp = addresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
+                        break;
+                    }
+                }
+            }
+
+            Action<IPAddress> createEndpoint = (address) => {
+                var endpoint = new ExplicitProxyEndPoint(address, proxyPort, decryptSsl: true);
+                endpoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
+                endpoint.BeforeTunnelConnectResponse += OnBeforeTunnelConnectResponseAsync;
+                proxy.AddEndPoint(endpoint);
+            };
+
+            createEndpoint(IPAddress.Loopback);
+
+            if (wsl2hostIp != null)
+            {
+                createEndpoint(wsl2hostIp.Address);
+            }
+        }
+
         private static CancellationTokenSource _shutdown = new CancellationTokenSource();
 
-        public ProxyServer proxy = new ProxyServer();
+        public readonly ProxyServer proxy = new ProxyServer();
 
-        public ProcessTracker processTracker = new ProcessTracker();
+        public readonly ProcessTracker processTracker = new ProcessTracker();
 
-        public readonly PasswordRotator Passwords;
+        public readonly IProxyPasword Passwords;
 
-        public string pipeName;
+        public readonly string pipeName;
 
-        public int proxyPort = 8888;
-        public UnicastIPAddressInformation wsl2hostIp;
+        public readonly int proxyPort;
 
-        public bool logRequests = false;
-        public int maxCachedConnectionsPerHost = 64;
+        public readonly bool ListenToWSL2;
+        public UnicastIPAddressInformation wsl2hostIp {get; private set;}
 
-        public string upstreamHttpProxy = Environment.GetEnvironmentVariable("http_proxy");
-        public string upstreamHttpsProxy = Environment.GetEnvironmentVariable("https_proxy");
+        public readonly bool logRequests;
 
-        public HttpClient HttpClient;
+        public readonly string upstreamHttpProxy;
+        public readonly string upstreamHttpsProxy = Environment.GetEnvironmentVariable("https_proxy");
 
-        private Ipc ipcServer;
+        public readonly HttpClient HttpClient;
+
+        private readonly Ipc ipcServer;
 
         public List<IProxyAuthPlugin> authPlugins = new List<IProxyAuthPlugin>();
         public List<IRequestPlugin> plugins = new List<IRequestPlugin>();
@@ -49,23 +165,6 @@ namespace DevProxy
         public string rootPem;
 
         public X509Certificate2 rootCert => proxy.CertificateManager.RootCertificate;
-
-        public DevProxy()
-        {
-            pipeName = "devproxy";
-            Passwords = new PasswordRotator("StoreSomethingRandomInDPAPI", TimeSpan.FromDays(7));
-
-            foreach(var i in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (i.Name == "vEthernet (WSL)")
-                {
-                    var props = i.GetIPProperties();
-                    var addresses = props.UnicastAddresses;
-                    wsl2hostIp = addresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
-                    break;
-                }
-            }
-        }
 
         public void Dispose()
         {
@@ -109,55 +208,9 @@ namespace DevProxy
 
         public async Task StartAsync()
         {
-            proxy.MaxCachedConnections = maxCachedConnectionsPerHost;
-
-            if (!string.IsNullOrEmpty(upstreamHttpProxy))
-            {
-                proxy.UpStreamHttpProxy = ParseProxy(upstreamHttpProxy);
-            }
-
-            if (!string.IsNullOrEmpty(upstreamHttpsProxy))
-            {
-                proxy.UpStreamHttpsProxy = ParseProxy(upstreamHttpsProxy);
-                
-                var upstream = new WebProxy(proxy.UpStreamHttpsProxy.HostName, proxy.UpStreamHttpsProxy.Port);
-                upstream.UseDefaultCredentials = false;
-
-                var handler = new HttpClientHandler();
-                handler.Proxy = upstream;
-                handler.UseProxy = true;
-
-                HttpClient = new HttpClient(handler);
-            }
-            else
-            {
-                HttpClient = new HttpClient();
-            }
-
-            ipcServer = new Ipc(pipeName, HandleIpc);
-
-            proxy.BeforeRequest += OnBeforeRequestAsync;
-            proxy.BeforeResponse += OnBeforeResponseAsync;
-
-            proxy.OnServerConnectionCreate += (sender, args) =>
-            {
-                // Console.WriteLine("Connected to remote: " + args.RemoteEndPoint.ToString());
-                return Task.CompletedTask;
-            };
-
-            Action<IPAddress> createEndpoint = (address) => {
-                var endpoint = new ExplicitProxyEndPoint(address, proxyPort, decryptSsl: true);
-                endpoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
-                endpoint.BeforeTunnelConnectResponse += OnBeforeTunnelConnectResponseAsync;
-                proxy.AddEndPoint(endpoint);
-            };
-
-            createEndpoint(IPAddress.Loopback);
-
             if (wsl2hostIp != null)
             {
                 await OpenFirewallToWSL2Async();
-                createEndpoint(wsl2hostIp.Address);
             }
 
             await EnsureRootCertIsInstalledAsync();

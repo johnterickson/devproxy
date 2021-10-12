@@ -5,17 +5,31 @@ using System.Threading;
 
 namespace DevProxy
 {
-    public sealed class PasswordRotator : IDisposable
+    public sealed class RotatingPassword : IProxyPasword
     {
+        private sealed class Password
+        {
+            public readonly DateTimeOffset Expiry;
+            public readonly string Value;
+
+            public Password(string value, DateTimeOffset expiry)
+            {
+                Value = value;
+                Expiry = expiry;
+            }
+        }
+
         private readonly Timer _timer;
         private readonly string _baseSecret;
         private readonly int _rotationRateSeconds;
-        private Queue<string> _proxyPasswords = new Queue<string>();
+        private readonly TimeSpan _maxDuration;
+        private Queue<Password> _proxyPasswords = new Queue<Password>();
 
         private long _currentBaseline = DateTimeOffset.MinValue.ToUnixTimeSeconds();
 
-        public PasswordRotator(string baseSecret, TimeSpan rotationRate)
+        public RotatingPassword(TimeSpan maxDuration, string baseSecret, TimeSpan rotationRate)
         {
+            _maxDuration = maxDuration;
             _baseSecret = baseSecret;
             _rotationRateSeconds = (int)rotationRate.TotalSeconds;
             Update();
@@ -33,17 +47,17 @@ namespace DevProxy
 
         private void Update()
         {
-            long seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            long seconds = now.ToUnixTimeSeconds();
             seconds /= _rotationRateSeconds;
             seconds *= _rotationRateSeconds;
             DateTimeOffset baseTime = DateTimeOffset.FromUnixTimeSeconds(seconds);
             lock (_proxyPasswords)
             {
-                _proxyPasswords.Enqueue(HasherHelper.HashSecret(_baseSecret + baseTime.ToString("O")));
-                while(_proxyPasswords.Count > 2)
-                {
-                    _proxyPasswords.Dequeue();
-                }
+                var password = new Password(
+                    HasherHelper.HashSecret(_baseSecret + baseTime.ToString("O")),
+                    now + _maxDuration);
+                _proxyPasswords.Enqueue(password);
             }
         }
 
@@ -51,7 +65,7 @@ namespace DevProxy
         {
             lock(_proxyPasswords)
             {
-                return _proxyPasswords.Last();
+                return _proxyPasswords.Last().Value;
             }
         }
 
@@ -59,7 +73,7 @@ namespace DevProxy
         {
             lock(_proxyPasswords)
             {
-                return _proxyPasswords.Any(p => p.Equals(password, StringComparison.Ordinal));
+                return _proxyPasswords.Reverse().Any(p => p.Value.Equals(password, StringComparison.Ordinal));
             }
         }
     }

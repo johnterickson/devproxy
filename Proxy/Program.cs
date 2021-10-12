@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -11,17 +12,60 @@ namespace DevProxy
 {
     public class Program
     {
-        
         static async Task<int> Main(string[] args)
         {
-            var proxy = new DevProxy();
 
-            foreach (int i in Enumerable.Range(0, args.Length))
-            {
+            var argKvps = Enumerable.Range(0, args.Length).Select(i => {
                 string arg = args[i];
-                string[] tokens = arg.Split('=');
+                var tokens = arg.Split('=');
                 string key = tokens[0].ToLowerInvariant();
                 string value = tokens.Length > 1 ? tokens[1] : null;
+                return (i, key,value);
+            }).ToArray();
+
+            Configuration config = new Configuration();
+
+            var configKvp = argKvps.FirstOrDefault(arg => arg.key == "--config");
+            if (configKvp.key != null)
+            {
+                string configText = await File.ReadAllTextAsync(configKvp.value);
+                config = JsonSerializer.Deserialize<Configuration>(configText);
+            }
+
+            foreach ((int i, string key, string value) in argKvps)
+            {
+                switch (key)
+                {
+                    case "--port":
+                        config.proxy.port = int.Parse(value);
+                        break;
+                    case "--upstream_http_proxy":
+                        config.proxy.upstream_http_proxy = value;
+                        break;
+                    case "--upstream_https_proxy":
+                        config.proxy.upstream_https_proxy = value;
+                        break;
+                    case "--max_cached_connections_per_host":
+                        config.proxy.max_cached_connections_per_host = int.Parse(value);
+                        break;
+                    case "--log_requests":
+                        config.proxy.log_requests = bool.Parse(value);
+                        break;
+                    case "--password":
+                        config.proxy.fixed_password = new FixedPasswordConfiguration()
+                        {
+                            value = value
+                        };
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown argument: `{key}={value}`");
+                }
+            }
+
+            var proxy = new DevProxy(config);
+            
+            foreach ((int i, string key, string value) in argKvps)
+            {
                 switch (key)
                 {
                     case "--run":
@@ -56,32 +100,9 @@ namespace DevProxy
                             Console.Write(response);
                             return 0;
                         }
-                    case "--port":
-                        proxy.proxyPort = int.Parse(value);
-                        break;
-                    case "--upstream_http_proxy":
-                        proxy.upstreamHttpProxy = value;
-                        break;
-                    case "--upstream_https_proxy":
-                        proxy.upstreamHttpsProxy = value;
-                        break;
-                    case "--max_cached_connections_per_host":
-                        proxy.maxCachedConnectionsPerHost = int.Parse(value);
-                        break;
-                    case "--log_requests":
-                        proxy.logRequests = bool.Parse(value);
-                        break;
-                    case "--win_auth":
-                        proxy.proxy.EnableWinAuth = bool.Parse(value);
-                        break;
-                    // case "--password":
-                    //     proxy.proxyPassword = value;
-                    //     break;
-                    default:
-                        throw new ArgumentException($"Unknown argument: `{arg}`");
                 }
             }
-            
+
             proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
             proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
             proxy.authPlugins.Add(new ProcessTreeProxyAuthPlugin(proxy.processTracker));

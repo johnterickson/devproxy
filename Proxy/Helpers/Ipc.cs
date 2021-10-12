@@ -19,13 +19,17 @@ namespace DevProxy
         private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
 
         private readonly string _pipeName;
-        public readonly Task Completion;
+        public Task Completion;
         private readonly Func<object, string, CancellationToken, Task<string>> _handler;
 
         public Ipc(string pipeName, Func<object, string, CancellationToken, Task<string>> handler)
         {
             _pipeName = pipeName;
             _handler = handler;
+        }
+
+        public void Start()
+        {
             Completion = Task.Run(() => RunServerAsync(_shutdown.Token));
         }
 
@@ -121,7 +125,7 @@ namespace DevProxy
             _shutdown.Cancel();
             try
             {
-                Completion.Wait();
+                Completion?.Wait();
             }
             catch
             {

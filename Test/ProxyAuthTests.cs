@@ -2,11 +2,10 @@ using System;
 using System.Net;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Threading.Tasks;
-using DevProxy;
 using Titanium.Web.Proxy.EventArguments;
 using System.Threading;
 
-namespace Test
+namespace DevProxy
 {
     [TestClass]
     public class ProxyAuthTests

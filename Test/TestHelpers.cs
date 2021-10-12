@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
-namespace Test
+namespace DevProxy
 {
     internal static class TestHelpers
     {

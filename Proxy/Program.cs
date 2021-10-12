@@ -74,20 +74,21 @@ namespace DevProxy
                     case "--win_auth":
                         proxy.proxy.EnableWinAuth = bool.Parse(value);
                         break;
-                    case "--password":
-                        proxy.proxyPassword = value;
-                        break;
+                    // case "--password":
+                    //     proxy.proxyPassword = value;
+                    //     break;
                     default:
                         throw new ArgumentException($"Unknown argument: `{arg}`");
                 }
             }
             
-            proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
-            proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.proxyPassword));
+            proxy.authPlugins.Add(new AuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
+            proxy.authPlugins.Add(new ProxyAuthorizationHeaderProxyAuthPlugin(proxy.Passwords.GetCurrent()));
             proxy.authPlugins.Add(new ProcessTreeProxyAuthPlugin(proxy.processTracker));
 
             proxy.plugins.Add(new BlobStoreCacheRequestPlugin());
             proxy.plugins.Add(new AzureDevOpsAuthRequestPlugin());
+            proxy.plugins.Add(new ACRAuthRequestPlugin());
             
             await proxy.StartAsync();
             
@@ -116,7 +117,7 @@ namespace DevProxy
                 Console.WriteLine($"       sudo cp {pemFromWsl2} {linuxPemPath}");
                 Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
                 Console.WriteLine($"  2. Set envvars to enable");
-                Console.WriteLine($"       export http_proxy=http://user:$({currentExeWsl2Path} --get_token)@{proxy.wsl2hostIp}:{proxy.proxyPort}");
+                Console.WriteLine($"       export http_proxy=http://user:$({currentExeWsl2Path} --get_token)@{proxy.wsl2hostIp.Address}:{proxy.proxyPort}");
                 Console.WriteLine($"       export https_proxy=$http_proxy");
                 Console.WriteLine($"       export NODE_EXTRA_CA_CERTS={linuxPemPath}");
             }

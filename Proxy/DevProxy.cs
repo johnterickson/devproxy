@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -24,8 +25,7 @@ namespace DevProxy
 
         public ProcessTracker processTracker = new ProcessTracker();
 
-        public string baseSecret = "StoreSomethingRandomInDPAPI";
-        public string proxyPassword;
+        public readonly PasswordRotator Passwords;
 
         public string pipeName;
 
@@ -37,6 +37,8 @@ namespace DevProxy
 
         public string upstreamHttpProxy = Environment.GetEnvironmentVariable("http_proxy");
         public string upstreamHttpsProxy = Environment.GetEnvironmentVariable("https_proxy");
+
+        public HttpClient HttpClient;
 
         private Ipc ipcServer;
 
@@ -51,8 +53,7 @@ namespace DevProxy
         public DevProxy()
         {
             pipeName = "devproxy";
-
-            proxyPassword = HasherHelper.HashSecret(baseSecret + DateTime.Now.ToLongDateString());
+            Passwords = new PasswordRotator("StoreSomethingRandomInDPAPI", TimeSpan.FromDays(7));
 
             foreach(var i in NetworkInterface.GetAllNetworkInterfaces())
             {
@@ -95,7 +96,7 @@ namespace DevProxy
                         }
                         return "OK";
                     case "get_token":
-                        return proxyPassword;
+                        return Passwords.GetCurrent();
                     default:
                         throw new ArgumentException($"Unknown command: `{request.Command}`");
                 }
@@ -108,8 +109,6 @@ namespace DevProxy
 
         public async Task StartAsync()
         {
-
-
             proxy.MaxCachedConnections = maxCachedConnectionsPerHost;
 
             if (!string.IsNullOrEmpty(upstreamHttpProxy))
@@ -120,6 +119,19 @@ namespace DevProxy
             if (!string.IsNullOrEmpty(upstreamHttpsProxy))
             {
                 proxy.UpStreamHttpsProxy = ParseProxy(upstreamHttpsProxy);
+                
+                var upstream = new WebProxy(proxy.UpStreamHttpsProxy.HostName, proxy.UpStreamHttpsProxy.Port);
+                upstream.UseDefaultCredentials = false;
+
+                var handler = new HttpClientHandler();
+                handler.Proxy = upstream;
+                handler.UseProxy = true;
+
+                HttpClient = new HttpClient(handler);
+            }
+            else
+            {
+                HttpClient = new HttpClient();
             }
 
             ipcServer = new Ipc(pipeName, HandleIpc);
@@ -277,7 +289,7 @@ namespace DevProxy
             RequestContext ctxt = args.GetRequestContext();
             if (ctxt == null)
             {
-                ctxt = new RequestContext(args);
+                ctxt = new RequestContext(args, this);
                 args.UserData = ctxt;
             }
 

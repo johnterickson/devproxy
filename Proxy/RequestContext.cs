@@ -9,15 +9,17 @@ namespace DevProxy
 {
     public class RequestContext
     {
+        public readonly DevProxy Proxy;
         public readonly Dictionary<IRequestPlugin, object> PluginData = new Dictionary<IRequestPlugin, object>();
         public bool IsConnectAuthenticated = false;
         public bool IsRequestAuthenticated = false;
         public List<(IProxyAuthPlugin, string)> AuthToProxyNotes = new List<(IProxyAuthPlugin, string)>();
         public SessionEventArgsBase Args;
 
-        public RequestContext(SessionEventArgsBase args)
+        public RequestContext(SessionEventArgsBase args, DevProxy proxy)
         {
             this.Args = args;
+            this.Proxy = proxy;
         }
 
         public void ReturnProxy407()

@@ -74,7 +74,7 @@ namespace DevProxy
         {
             using (var ipcPipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly | PipeOptions.Asynchronous))
             {
-                await ipcPipe.ConnectAsync(cancellationToken);
+                await ipcPipe.ConnectAsync((int)TimeSpan.FromSeconds(5).TotalMilliseconds, cancellationToken);
                 await SendMessageAsync(ipcPipe, message, cancellationToken);
                 return await ReceiveMessageAsync(ipcPipe, cancellationToken);
             }

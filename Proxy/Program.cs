@@ -15,18 +15,16 @@ namespace DevProxy
         static async Task<int> Main(string[] args)
         {
 
-            var argKvps = Enumerable.Range(0, args.Length).Select(i => {
+            var argKvps = Enumerable.Range(0, args.Length).Select(i =>
+            {
                 string arg = args[i];
                 var tokens = arg.Split('=');
                 string key = tokens[0].ToLowerInvariant();
                 string value = tokens.Length > 1 ? tokens[1] : null;
-                return (i, key,value);
+                return (i, key, value);
             }).ToArray();
 
-            Configuration config = new Configuration()
-            {
-                proxy = new ProxyConfiguration(),
-            };
+            var config = new Configuration();
 
             var configKvp = argKvps.FirstOrDefault(arg => arg.key == "--config");
             if (configKvp.key != null)
@@ -71,8 +69,20 @@ namespace DevProxy
                 }
             }
 
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STORAGE_CONNECTION_STRING")))
+            {
+                config.plugins.Add(new PluginConfiguration()
+                {
+                    class_name = nameof(AzureBlobSasRequestPlugin),
+                    options = new Dictionary<string, object>()
+                    {
+                        {"connection_string_env_var", "STORAGE_CONNECTION_STRING"}
+                    }
+                });
+            }
+
             var proxy = new DevProxy(config);
-            
+
             foreach ((int i, string key, string value) in argKvps)
             {
                 switch (key)
@@ -121,16 +131,16 @@ namespace DevProxy
             proxy.plugins.Add(new BlobStoreCacheRequestPlugin());
             proxy.plugins.Add(new AzureDevOpsAuthRequestPlugin());
             proxy.plugins.Add(new ACRAuthRequestPluginInstance());
-            
+
             await proxy.StartAsync();
-            
+
             var pemForwardSlash = proxy.rootPem.Replace('\\', '/');
             var pemFromWsl2 = ProcessHelpers.ConvertToWSL2Path(proxy.rootPem);
             var currentExePath = Assembly.GetEntryAssembly().Location.Replace(".dll", ".exe");
             var currentExeWsl2Path = ProcessHelpers.ConvertToWSL2Path(currentExePath);
 
             Console.WriteLine(@"For most apps:");
-            Console.WriteLine($"  $env:http_proxy = \"$({currentExePath})\"");
+            Console.WriteLine($"  $env:http_proxy = \"$({currentExePath} --get_proxy)\"");
             Console.WriteLine(@"For windows git (via config):");
             // Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  git config --add http.sslcainfo {pemForwardSlash}");

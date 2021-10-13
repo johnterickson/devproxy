@@ -44,7 +44,7 @@ namespace DevProxy
                             value = password,
                         }
                     },
-                    plugins = new PluginConfiguration[] {
+                    plugins = new List<PluginConfiguration> {
                         new PluginConfiguration()
                         {
                             class_name = nameof(ProxyAuthorizationHeaderProxyAuthPlugin),

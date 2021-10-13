@@ -24,7 +24,6 @@ namespace DevProxy
             _env.Dispose();
         }
 
-
         [TestMethod]
         public async Task HttpAuthOK()
         {
@@ -50,32 +49,42 @@ namespace DevProxy
         public async Task HttpsBypassNoAuth407()
         {
             var response = await _env.noAuthClient.GetAsync("https://www.bing.com");
-            Assert.AreEqual(HttpStatusCode.ProxyAuthenticationRequired, response.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         }
 
-        private class HttpsInterceptAllPlugin : IRequestPlugin
+        private class HttpsInterceptPlugin : IRequestPlugin
         {
+            private readonly string hostSubstring;
+            public volatile int TimesCalled = 0;
+
+            public HttpsInterceptPlugin(string hostSubstring)
+            {
+                this.hostSubstring = hostSubstring;
+            }
+
             public Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args)
             {
+                Interlocked.Increment(ref TimesCalled);
                 args.GenericResponse("Intercepted.", HttpStatusCode.OK);
                 return Task.FromResult(RequestPluginResult.Stop);
             }
 
             public Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args)
             {
+                Interlocked.Increment(ref TimesCalled);
                 return Task.FromResult(RequestPluginResult.Continue);
             }
 
             public bool IsHostRelevant(string host)
             {
-                return host.Contains("intercept.me");
+                return host.Contains(hostSubstring);
             }
         }
 
         [TestMethod]
         public async Task HttpsInterceptAuthOK()
         {
-            IRequestPlugin plugin = new HttpsInterceptAllPlugin();
+            var plugin = new HttpsInterceptPlugin("intercept.me");
             try
             {
                 _env.proxy.plugins.Add(plugin);
@@ -88,32 +97,10 @@ namespace DevProxy
             }
         }
 
-        private class NeverCalledPlugin : IRequestPlugin
-        {
-            public volatile int TimesCalled = 0;
-            public Task<RequestPluginResult> BeforeRequestAsync(SessionEventArgs args)
-            {
-                Interlocked.Increment(ref TimesCalled);
-                throw new NotImplementedException();
-            }
-
-            public Task<RequestPluginResult> BeforeResponseAsync(SessionEventArgs args)
-            {
-                Interlocked.Increment(ref TimesCalled);
-                throw new NotImplementedException();
-            }
-
-            public bool IsHostRelevant(string host)
-            {
-                Interlocked.Increment(ref TimesCalled);
-                throw new NotImplementedException();
-            }
-        }
-
         [TestMethod]
         public async Task HttpsInterceptNoAuth407()
         {
-            var plugin = new NeverCalledPlugin();
+            var plugin = new HttpsInterceptPlugin("intercept.me");
             try
             {
                 _env.proxy.plugins.Add(plugin);

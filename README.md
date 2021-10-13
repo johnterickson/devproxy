@@ -45,3 +45,18 @@ X-DevProxy-AuthToProxy-ProxyPasswordAuthPlugin: Authenticated_UserMatch_SHA512=5
 X-DevProxy-AzureDevOpsAuthPlugin-TokenType: WindowsIntegratedAuth
 X-DevProxy-AzureDevOpsAuthPlugin-TokenSHA512: F22C0ACA
 ```
+
+Example of automatically creating minimal SAS signatures for each request (set `STORAGE_CONNECTION_STRING` before starting proxy):
+```
+john@jerick-hpz440:~$ curl -v -X PUT -d "From DevProxy: Hello, Azure Storage! $(date)"$'\n' -H "x-ms-blob-type: BlockBlob" https://jerickbuildcache.blob.core.windows.net/devproxytest/hello.txt 2>&1 | grep DevProxy
+*  issuer: CN=DevProxy for jerick
+< X-DevProxy-AuthToProxy-AuthorizationHeaderProxyAuthPlugin: NoOpinion_NoHeader=Authorization
+< X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=07A6974FB90B91F566F502033A4B4BA7
+< X-DevProxy-AzureBlobSasRequestPlugin-SAS: racwdxltmei_2021-10-13T20:45:44
+john@jerick-hpz440:~$ curl -v https://jerickbuildcache.blob.core.windows.net/devproxytest/hello.txt 2>&1 | grep DevProxy
+*  issuer: CN=DevProxy for jerick
+< X-DevProxy-AuthToProxy-AuthorizationHeaderProxyAuthPlugin: NoOpinion_NoHeader=Authorization
+< X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=07A6974FB90B91F566F502033A4B4BA7
+< X-DevProxy-AzureBlobSasRequestPlugin-SAS: r_2021-10-13T20:46:01
+From DevProxy: Hello, Azure Storage! Wed Oct 13 13:40:44 PDT 2021
+```

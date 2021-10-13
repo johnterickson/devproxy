@@ -4,14 +4,14 @@ namespace DevProxy
 {
     public class Configuration
     {
-        public ProxyConfiguration proxy { get; set; }
-        public PluginConfiguration[] plugins { get; set; }
+        public ProxyConfiguration proxy { get; set; } = new ProxyConfiguration();
+        public List<PluginConfiguration> plugins { get; set; } = new List<PluginConfiguration>();
     }
 
     public class PluginConfiguration
     {
         public string class_name { get; set; }
-        public Dictionary<string, object> options { get; set; }
+        public Dictionary<string, object> options { get; set; } = new Dictionary<string, object>();
     }
 
     public class FixedPasswordConfiguration

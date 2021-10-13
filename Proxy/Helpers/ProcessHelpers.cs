@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -14,7 +16,7 @@ namespace DevProxy
             return "/mnt/" + char.ToLower(path[0]) + path.Substring(2);
         }
 
-        public static async Task<string> RunAsync(string fileName, string arguments, bool admin = false, string stdin = null)
+        public static async Task<(int, string, string)> RunAsync(string fileName, string arguments, int[] expectedExitCodes, bool admin = false, string stdin = null)
         {
             var process = Process.Start(new ProcessStartInfo(fileName, arguments)
             {
@@ -36,11 +38,13 @@ namespace DevProxy
             await Task.WhenAll(writeTask, stdoutTask, stderrTask, process.WaitForExitAsync());
             string stdout = (await stdoutTask).Trim();
             string stderr = (await stderrTask).Trim();
-            // if (process.ExitCode != 0)
-            // {
-            //     throw new Exception($"{fileName} {arguments} failed with exit code {process.ExitCode}: {stdout} {stderr}");
-            // }
-            return stdout;
+
+            if (expectedExitCodes != null && !expectedExitCodes.Contains(process.ExitCode))
+            {
+                throw new Exception($"{fileName} {arguments} failed with exit code {process.ExitCode}: {stdout} {stderr}");
+            }
+
+            return (process.ExitCode, stdout, stderr);
         }
 
         /// <summary>

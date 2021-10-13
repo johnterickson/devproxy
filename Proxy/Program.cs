@@ -63,6 +63,8 @@ namespace DevProxy
                         break;
                     case "--get_token":
                     case "--run":
+                    case "--get_proxy":
+                    case "--get_wsl_proxy":
                         break;
                     default:
                         throw new ArgumentException($"Unknown argument: `{key}={value}`");
@@ -98,10 +100,12 @@ namespace DevProxy
                             return p.ExitCode;
                         }
                     case "--get_token":
+                    case "--get_proxy":
+                    case "--get_wsl_proxy":
                         {
                             string message = JsonSerializer.Serialize(new IpcMessage
                             {
-                                Command = "get_token",
+                                Command = key.Substring(2),
                             });
                             string response = await Ipc.SendAsync(proxy.pipeName, message, CancellationToken.None);
                             Console.Write(response);
@@ -126,15 +130,15 @@ namespace DevProxy
             var currentExeWsl2Path = ProcessHelpers.ConvertToWSL2Path(currentExePath);
 
             Console.WriteLine(@"For most apps:");
-            Console.WriteLine($"  $env:HTTP_PROXY = \"http://user:$({currentExePath} --get_token)@localhost:{proxy.proxyPort}\"");
+            Console.WriteLine($"  $env:http_proxy = \"$({currentExePath})\"");
             Console.WriteLine(@"For windows git (via config):");
             // Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  git config --add http.sslcainfo {pemForwardSlash}");
             Console.WriteLine(@"For windows git (via env var):");
-            // Console.WriteLine($"  HTTP_PROXY=http://user:{proxyPassword}@localhost:{proxyPort}");
+            // Console.WriteLine($"  http_proxy=http://user:{proxyPassword}@localhost:{proxyPort}");
             Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemForwardSlash}");
 
-            if (proxy.wsl2hostIp != null)
+            if (proxy.wsl2hostIpInfo != null)
             {
                 string linuxPemPath = "/etc/ssl/certs/devproxy.pem";
                 //https://stackoverflow.com/questions/51176209/http-proxy-not-working
@@ -145,7 +149,7 @@ namespace DevProxy
                 Console.WriteLine($"       sudo cp {pemFromWsl2} {linuxPemPath}");
                 Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
                 Console.WriteLine($"  2. Set envvars to enable");
-                Console.WriteLine($"       export http_proxy=http://user:$({currentExeWsl2Path} --get_token)@{proxy.wsl2hostIp.Address}:{proxy.proxyPort}");
+                Console.WriteLine($"       export http_proxy=$({currentExeWsl2Path} --get_wsl_proxy)");
                 Console.WriteLine($"       export https_proxy=$http_proxy");
                 Console.WriteLine($"       export NODE_EXTRA_CA_CERTS={linuxPemPath}");
             }

@@ -30,7 +30,7 @@ namespace DevProxy
 
         public static async Task<List<ProcessTcpConnection>> FindConnectionsAsync()
         {
-            string connectionsString = await ProcessHelpers.RunAsync("netstat", "-n -o");
+            (_, string connectionsString, _) = await ProcessHelpers.RunAsync("netstat", "-n -o", new[] {0});
             return netstatRegex.Matches(connectionsString)
                 .Select(m => new ProcessTcpConnection(m))
                 .ToList();

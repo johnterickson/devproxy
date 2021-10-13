@@ -9,6 +9,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,7 +115,7 @@ namespace DevProxy
                     {
                         var props = i.GetIPProperties();
                         var addresses = props.UnicastAddresses;
-                        wsl2hostIp = addresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
+                        wsl2hostIpInfo = addresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
                         break;
                     }
                 }
@@ -129,9 +130,9 @@ namespace DevProxy
 
             createEndpoint(IPAddress.Loopback);
 
-            if (wsl2hostIp != null)
+            if (wsl2hostIpInfo != null)
             {
-                createEndpoint(wsl2hostIp.Address);
+                createEndpoint(wsl2hostIpInfo.Address);
             }
 
             if (this.configuration.plugins != null)
@@ -159,8 +160,6 @@ namespace DevProxy
             }
         }
 
-        private static CancellationTokenSource _shutdown = new CancellationTokenSource();
-
         public readonly ProxyServer proxy = new ProxyServer();
 
         public readonly ProcessTracker processTracker = new ProcessTracker();
@@ -172,7 +171,7 @@ namespace DevProxy
         public readonly int proxyPort;
 
         public readonly bool ListenToWSL2;
-        public UnicastIPAddressInformation wsl2hostIp {get; private set;}
+        public UnicastIPAddressInformation wsl2hostIpInfo {get; private set;}
 
         public readonly bool logRequests;
 
@@ -194,8 +193,8 @@ namespace DevProxy
         public void Dispose()
         {
             ipcServer.Dispose();
-            processTracker.Dispose();
             proxy.Stop();
+            processTracker.Dispose();
         }
 
         private async Task<string> HandleIpc(object sender, string request_json, CancellationToken cancellationToken)
@@ -221,6 +220,17 @@ namespace DevProxy
                         return "OK";
                     case "get_token":
                         return Passwords.GetCurrent();
+                    case "get_proxy":
+                        return $"http://user:{Passwords.GetCurrent()}@localhost:{this.proxyPort}";
+                    case "get_wsl_proxy":
+                        if (this.wsl2hostIpInfo == null)
+                        {
+                            return "DEVPROXY_IS_NOT_LISTENING_FOR_WSL2";
+                        }
+                        else
+                        {
+                            return $"http://user:{Passwords.GetCurrent()}@{this.wsl2hostIpInfo.Address}:{this.proxyPort}";
+                        }
                     default:
                         throw new ArgumentException($"Unknown command: `{request.Command}`");
                 }
@@ -233,7 +243,7 @@ namespace DevProxy
 
         public async Task StartAsync()
         {
-            if (wsl2hostIp != null)
+            if (wsl2hostIpInfo != null)
             {
                 await OpenFirewallToWSL2Async();
             }
@@ -241,6 +251,7 @@ namespace DevProxy
             await EnsureRootCertIsInstalledAsync();
 
             proxy.Start();
+            ipcServer.Start();
         }
 
         private async Task OnBeforeTunnelConnectRequestAsync(object sender, TunnelConnectSessionEventArgs args)
@@ -414,9 +425,11 @@ namespace DevProxy
                 proxy.CertificateManager.PfxFilePath = "devproxy.pfx";
                 proxy.CertificateManager.PfxPassword = "devproxy";
 
-                if (null == proxy.CertificateManager.LoadRootCertificate())
+                var root = proxy.CertificateManager.LoadRootCertificate();
+                if (null == root)
                 {
                     proxy.CertificateManager.EnsureRootCertificate();
+                    root = proxy.CertificateManager.LoadRootCertificate();
                 }
 
                 rootPfx = certStorage.GetRootCertPath(proxy.CertificateManager.PfxFilePath);
@@ -424,11 +437,31 @@ namespace DevProxy
 
                 if (!File.Exists(rootPem))
                 {
-                    string gitPath = await ProcessHelpers.RunAsync("where.exe", "git.exe");
+                    (_, string stdout, _) = await ProcessHelpers.RunAsync("where.exe", "git.exe", new[] {0});
+                    string gitPath = stdout;
                     gitPath = Path.GetDirectoryName(gitPath);
                     gitPath = Path.GetDirectoryName(gitPath);
                     string opensslPath = Path.Combine(gitPath, "mingw64", "bin", "openssl.exe");
-                    await ProcessHelpers.RunAsync(opensslPath, $"pkcs12 -in \"{rootPfx}\" -out \"{rootPem}\" -password pass:{proxy.CertificateManager.PfxPassword} -nokeys");
+                    string tmp = rootPfx + ".tmp";
+                    try
+                    {
+                        string tempPassword = Guid.NewGuid().ToString("N");
+                        byte[] certBytes = root.Export(X509ContentType.Pkcs12, tempPassword);
+                        await File.WriteAllBytesAsync(tmp, certBytes);
+                        // string rootCert = "-----BEGIN CERTIFICATE-----\n" + Convert.ToBase64String(rootBytes) + "\n-----END CERTIFICATE-----";
+                        await ProcessHelpers.RunAsync(opensslPath,
+                            $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword} -nokeys",
+                            new[] {0});
+                    }
+                    catch
+                    {
+                        File.Delete(rootPem);
+                        throw;
+                    }
+                    finally
+                    {
+                        File.Delete(tmp);
+                    }
                 }
             }
             finally
@@ -440,13 +473,14 @@ namespace DevProxy
         private static SemaphoreSlim _firewallLock = new SemaphoreSlim(1,1);
         private async Task OpenFirewallToWSL2Async()
         {
-            string ruleName = $"DevProxy listening to {proxyPort} from WSL2 {wsl2hostIp.Address}/{wsl2hostIp.PrefixLength}";
+            string ruleName = $"DevProxy listening to {proxyPort} from WSL2 {wsl2hostIpInfo.Address}/{wsl2hostIpInfo.PrefixLength}";
             try
             {
                 await _firewallLock.WaitAsync();
-                string existingRule = await ProcessHelpers.RunAsync(
+                (_, string existingRule, _) = await ProcessHelpers.RunAsync(
                     "powershell",
-                    $"-Command \"Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue\""
+                    $"-Command \"Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue\"",
+                    new [] {0, 1}
                 );
                 
                 if (!existingRule.Contains(ruleName))
@@ -454,8 +488,9 @@ namespace DevProxy
                     await ProcessHelpers.RunAsync(
                         "powershell",
                         $"-Command \"New-NetFireWallRule -DisplayName '{ruleName}' -Direction Inbound -LocalPort {proxyPort} -Action Allow -Protocol TCP " +
-                        $"-LocalAddress '{wsl2hostIp.Address}' " + 
-                        $"-RemoteAddress '{wsl2hostIp.Address}/{wsl2hostIp.PrefixLength}'\"",
+                        $"-LocalAddress '{wsl2hostIpInfo.Address}' " + 
+                        $"-RemoteAddress '{wsl2hostIpInfo.Address}/{wsl2hostIpInfo.PrefixLength}'\"",
+                        new [] {0},
                         admin: true
                     );
                 }

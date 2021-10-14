@@ -144,15 +144,21 @@ namespace DevProxy
                     var pluginFactoryObject = Activator.CreateInstance(
                         Assembly.GetExecutingAssembly().FullName,
                         className).Unwrap();
+
+                    bool created = false;
                     if (pluginFactoryObject is IRequestPluginFactory pluginFactory)
                     {
                         this.plugins.Add(pluginFactory.Create(pluginConfig.options));
+                        created = true;
                     }
-                    else if (pluginFactoryObject is IProxyAuthPluginFactory authPluginFactory)
+
+                    if (pluginFactoryObject is IProxyAuthPluginFactory authPluginFactory)
                     {
                         this.authPlugins.Add(authPluginFactory.Create(this.Passwords, pluginConfig.options));
+                        created = true;
                     }
-                    else
+                    
+                    if(!created)
                     {
                         throw new ArgumentException($"{pluginFactoryObject.GetType().FullName} is not a pluginfactory.");
                     }
@@ -190,10 +196,16 @@ namespace DevProxy
 
         public X509Certificate2 rootCert => proxy.CertificateManager.RootCertificate;
 
+        private bool started = false;
+
         public void Dispose()
         {
-            ipcServer.Dispose();
-            proxy.Stop();
+            if (started)
+            {
+                ipcServer.Dispose();
+                proxy.Stop();
+            }
+
             processTracker.Dispose();
         }
 
@@ -243,6 +255,13 @@ namespace DevProxy
 
         public async Task StartAsync()
         {
+            if (started)
+            {
+                throw new Exception("Already started.");
+            }
+
+            started = true;
+
             if (wsl2hostIpInfo != null)
             {
                 await OpenFirewallToWSL2Async();
@@ -450,7 +469,8 @@ namespace DevProxy
                         await File.WriteAllBytesAsync(tmp, certBytes);
                         // string rootCert = "-----BEGIN CERTIFICATE-----\n" + Convert.ToBase64String(rootBytes) + "\n-----END CERTIFICATE-----";
                         await ProcessHelpers.RunAsync(opensslPath,
-                            $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword} -nokeys",
+                            $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword}",
+                            // $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword} -nokeys",
                             new[] {0});
                     }
                     catch

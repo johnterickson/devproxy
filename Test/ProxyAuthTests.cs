@@ -4,9 +4,12 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy.EventArguments;
 using System.Threading;
+using System.Text.Json;
+using System.Collections.Generic;
 
 namespace DevProxy
 {
+
     [TestClass]
     public class ProxyAuthTests
     {
@@ -15,13 +18,15 @@ namespace DevProxy
         [ClassInitialize]
         public static async Task ClassInit(TestContext context)
         {
-            _env = await TestEnvironment.CreateAsync();
-        }
+            var pluginConfig = new PluginConfiguration()
+            {
+                class_name = nameof(ProxyAuthorizationHeaderProxyAuthPlugin),
+            };
 
-        [ClassCleanup]
-        public static void ClassCleanup()
-        {
-            _env.Dispose();
+            var config = new Configuration();
+            config.plugins.Add(pluginConfig);
+                
+            _env = await TestEnvironment.CreateAsync(config);
         }
 
         [TestMethod]

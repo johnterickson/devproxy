@@ -55,46 +55,53 @@ namespace DevProxy
 
         public override Task<RequestPluginResult> BeforeRequestAsync(PluginRequest request)
         {
-            if (null == request.Request.Headers.GetFirstHeader("Authorization"))
+            if (!IsHostRelevant(request.Request.Host))
             {
-                var existingUri = new Uri(request.Request.Url);
-                var uri = new BlobUriBuilder(existingUri);
-
-                var blobSasBuilder = new BlobSasBuilder()
-                {
-                    BlobContainerName = uri.BlobContainerName,
-                    BlobName = uri.BlobName,
-                    ExpiresOn = DateTime.UtcNow.AddMinutes(5),//Let SAS token expire after 5 minutes.
-                };
-                switch(request.Request.Method)
-                {
-                    case "HEAD":
-                    case "GET":
-                    case "OPTIONS":
-                        blobSasBuilder.SetPermissions(BlobSasPermissions.Read);
-                        break;
-                    case "PUT":
-                    case "POST":
-                    case "PATCH":
-                        blobSasBuilder.SetPermissions(BlobSasPermissions.All);
-                        break;
-                    default:
-                        throw new NotImplementedException("don't know what to do with " + request.Request.Method);
-                }
-                
-                var sasToken = blobSasBuilder.ToSasQueryParameters(key).ToString();
-                
-                if (string.IsNullOrEmpty(existingUri.Query))
-                {
-                    request.Request.Url += "?" + sasToken;
-                }
-                else
-                {
-                    request.Request.Url += "&" + sasToken;
-                }
-
-                request.Data = $"{blobSasBuilder.Permissions}_{blobSasBuilder.ExpiresOn.ToString("s")}";
+                return Task.FromResult(RequestPluginResult.Continue);
             }
+            
+            if (null != request.Request.Headers.GetFirstHeader("Authorization"))
+            {
+                return Task.FromResult(RequestPluginResult.Continue);
+            }
+            
+            var existingUri = new Uri(request.Request.Url);
+            var uri = new BlobUriBuilder(existingUri);
+
+            var blobSasBuilder = new BlobSasBuilder()
+            {
+                BlobContainerName = uri.BlobContainerName,
+                BlobName = uri.BlobName,
+                ExpiresOn = DateTime.UtcNow.AddMinutes(5),//Let SAS token expire after 5 minutes.
+            };
+            switch(request.Request.Method)
+            {
+                case "HEAD":
+                case "GET":
+                case "OPTIONS":
+                    blobSasBuilder.SetPermissions(BlobSasPermissions.Read);
+                    break;
+                case "PUT":
+                case "POST":
+                case "PATCH":
+                    blobSasBuilder.SetPermissions(BlobSasPermissions.All);
+                    break;
+                default:
+                    throw new NotImplementedException("don't know what to do with " + request.Request.Method);
+            }
+            
+            var sasToken = blobSasBuilder.ToSasQueryParameters(key).ToString();
+            
+            if (string.IsNullOrEmpty(existingUri.Query))
+            {
+                request.Request.Url += "?" + sasToken;
+            }
+            else
+            {
+                request.Request.Url += "&" + sasToken;
+            }
+
+            request.Data = $"{blobSasBuilder.Permissions}_{blobSasBuilder.ExpiresOn.ToString("s")}";
 
             return Task.FromResult(RequestPluginResult.Continue);
         }

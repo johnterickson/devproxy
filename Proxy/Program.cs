@@ -81,6 +81,15 @@ namespace DevProxy
                 });
             }
 
+            // config.plugins.Add(new PluginConfiguration()
+            // {
+            //     class_name = nameof(LimitNetworkAccessProxyAuthPlugin),
+            //     options = new Dictionary<string, object>()
+            //     {
+            //         {"rules", new}
+            //     }
+            // });
+
             var proxy = new DevProxy(config);
 
             foreach ((int i, string key, string value) in argKvps)

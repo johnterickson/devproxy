@@ -12,7 +12,7 @@
             // If you have changed target frameworks, make sure to update the program path.
             "program": "${workspaceFolder}/proxy/bin/Debug/net5.0/win10-x64/publish/DevProxy.exe",
             "args": ["--port=8888", "--log_requests=true"
-                ,"--upstream_http_proxy=http://127.0.0.1:8889", "--upstream_https_proxy=http://127.0.0.1:8889"
+                // ,"--upstream_http_proxy=http://127.0.0.1:8889", "--upstream_https_proxy=http://127.0.0.1:8889"
             ],
             "cwd": "${workspaceFolder}",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console

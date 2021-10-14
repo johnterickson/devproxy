@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
+using static DevProxy.LimitNetworkAccessPlugin;
 
 namespace DevProxy
 {
@@ -26,34 +27,12 @@ namespace DevProxy
             this.serverUri = new Uri(this.server.Prefixes.Single());
         }
 
-        public static async Task<TestEnvironment> CreateAsync()
+        public static async Task<TestEnvironment> CreateAsync(Configuration config)
         {
             var (_, proxy) = await TestHelpers.CreateWithRandomPort(async p => {
-                string password = Guid.NewGuid().ToString("N");
-
-                var config = new Configuration()
-                {
-                    proxy = new ProxyConfiguration()
-                    {
-                        listen_to_wsl2 = false,
-                        ipcPipeName = Guid.NewGuid().ToString("N"),
-                        port = p,
-                        password_type = "fixed",
-                        fixed_password = new FixedPasswordConfiguration()
-                        {
-                            value = password,
-                        }
-                    },
-                    plugins = new List<PluginConfiguration> {
-                        new PluginConfiguration()
-                        {
-                            class_name = nameof(ProxyAuthorizationHeaderProxyAuthPlugin),
-                            options = new Dictionary<string, object>(){
-                                {"password", password}
-                            }
-                        }
-                    }
-                };
+                config.proxy.port = p;
+                config.proxy.ipcPipeName = $"TestPipe{p}_{Guid.NewGuid().ToString("N")}";
+                config.proxy.listen_to_wsl2 = false;
                 var proxy = new DevProxy(config);
                 await proxy.StartAsync();
                 return proxy;

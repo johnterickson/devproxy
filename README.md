@@ -12,19 +12,20 @@ Additionally, the proxy will require an additional level of auth to ensure that 
 Example output of starting proxy:
 ```
 For most apps:
-  $env:HTTP_PROXY = "http://$(D:\src\DevProxy\bin\Debug\net5.0\win10-x64\publish\DevProxy.exe --get_token)@localhost:8888"
+  $env:http_proxy = "$(D:\src\DevProxy\Proxy\bin\Release\net5.0\DevProxy.exe --get_proxy)"
 For windows git (via config):
   git config --add http.sslcainfo C:/Users/jerick/.devproxy/certs/root.devproxy.pem
 For windows git (via env var):
   GIT_PROXY_SSL_CAINFO=C:/Users/jerick/.devproxy/certs/root.devproxy.pem
 For WSL2 (Ubuntu tested):
   1. Once, install root cert
-       cp /mnt/c/Users/jerick/.devproxy/certs/root.devproxy.pem /etc/ssl/certs/
+       sudo apt install ca-certificates
+       sudo cp /mnt/c/Users/jerick/.devproxy/certs/root.devproxy.pem /etc/ssl/certs/devproxy.pem
        sudo update-ca-certificates --verbose --fresh | grep -i devproxy
-  2. Set envvars to enable
-       export HTTP_PROXY=http://$(/mnt/d/src/DevProxy/bin/Debug/net5.0/win10-x64/publish/DevProxy.exe --get_token)@172.28.160.1:8888
-       export HTTPS_PROXY=$HTTP_PROXY
-Started!
+  2. Set envvars to enable (add this to .bashrc)
+       export http_proxy=$(/mnt/d/src/DevProxy/Proxy/bin/Release/net5.0/DevProxy.exe --get_wsl_proxy)
+       export https_proxy=$http_proxy
+       export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/devproxy.pem
 ```
 
 Example using proxy from powershell:

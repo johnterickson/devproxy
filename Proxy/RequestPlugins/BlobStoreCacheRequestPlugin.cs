@@ -23,6 +23,7 @@ namespace DevProxy
     {
         public ContentHash Hash;
         public Context Context;
+        public bool CacheHit;
     }
 
     /*
@@ -110,12 +111,12 @@ namespace DevProxy
 
             ContentHash hash = ContentHash.FromFixedBytes(hashType, new ReadOnlyFixedBytes(hashBytes, 33, 0));
 
+            
             r.Data = new RequestInfo()
             {
                 Hash = hash,
-                Context = new Context(url.AbsoluteUri.ToString(), null)
+                Context = new Context(url.AbsoluteUri.ToString(), null),
             };
-
             // Console.WriteLine($"Found blob request {hash.Serialize()}.");
 
             // TODO compression
@@ -124,6 +125,9 @@ namespace DevProxy
                 r.Data.Context,
                 hash,
                 CancellationToken.None);
+
+            r.Data.CacheHit = streamResult.Succeeded;
+
             if (streamResult.Succeeded)
             {
                 using (streamResult.Stream)
@@ -134,7 +138,6 @@ namespace DevProxy
                     var headers = new List<HttpHeader>()
                     {
                         new HttpHeader("Content-Length", body.LongLength.ToString()),
-                        new HttpHeader($"X-DevProxy-{this.GetType().Name}-Cache", "HIT"),
                     };
                     r.Args.GenericResponse(body, HttpStatusCode.OK, headers, closeServerConnection: false);
                 }
@@ -154,9 +157,12 @@ namespace DevProxy
                 return RequestPluginResult.Continue;
             }
 
-            r.Response.Headers.AddHeader($"X-DevProxy-{this.GetType().Name}-Cache", "MISS");
+            r.Response.Headers.AddHeader(
+                $"X-DevProxy-{this.GetType().Name}-Cache",
+                r.Data.CacheHit ? "HIT" : "MISS");
 
-            if (r.Response.StatusCode >= 200 
+            if (!r.Data.CacheHit
+                && r.Response.StatusCode >= 200 
                 && r.Response.StatusCode < 300
                 // The maximum size in any single dimension is 2,147,483,591 (0x7FFFFFC7) for byte arrays
                 && r.Response.ContentLength < 0x7FFFFFC7) //

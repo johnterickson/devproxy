@@ -9,7 +9,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -277,12 +276,9 @@ namespace DevProxy
         {
             string host = args.HttpClient.Request.RequestUri.Host;
 
-            bool shouldDecrypt = plugins.Any(p => p.IsHostRelevant(host));
-            if (shouldDecrypt)
+            var ctxt = await InitRequestAsync(args);
+            if (ctxt.IsHostRelevant)
             {
-                await InitRequestAsync(args);
-                var ctxt = args.GetRequestContext();
-
                 if (!ctxt.IsAuthenticated)
                 {
                     args.DenyConnect = true;
@@ -312,15 +308,19 @@ namespace DevProxy
             ctxt.AddAuthNotesToResponse();
             if (logRequests)
             {
-                Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
             }
             return Task.CompletedTask;
         }
 
         private async Task OnBeforeRequestAsync(object sender, SessionEventArgs args)
         {
-            await InitRequestAsync(args);
-            var ctxt = args.GetRequestContext();
+            var ctxt = await InitRequestAsync(args);
+
+            if (!ctxt.IsHostRelevant)
+            {
+                return;
+            }
 
             if (!ctxt.IsAuthenticated)
             {
@@ -330,12 +330,23 @@ namespace DevProxy
                 return;
             }
 
-            foreach (var plugin in plugins)
+            try
             {
-                var result = await plugin.BeforeRequestAsync(args);
-                if (result == RequestPluginResult.Stop)
+                foreach (var plugin in plugins)
                 {
-                    return;
+                    var result = await plugin.BeforeRequestAsync(args);
+                    ctxt.LastPluginCalled = plugin;
+                    if (result == RequestPluginResult.Stop)
+                    {
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                if (ctxt.Request.CancelRequest)
+                {
+                    await OnBeforeResponseAsync(sender, args);
                 }
             }
         }
@@ -353,8 +364,16 @@ namespace DevProxy
 
             try
             {
+                bool foundLastPlugin = false;
                 foreach (var plugin in plugins.AsEnumerable().Reverse())
                 {
+                    foundLastPlugin |= ctxt.LastPluginCalled == plugin;
+
+                    if(!foundLastPlugin)
+                    {
+                        continue;
+                    }
+
                     var result = await plugin.BeforeResponseAsync(args);
                     if (result == RequestPluginResult.Stop)
                     {
@@ -364,13 +383,31 @@ namespace DevProxy
             }
             catch (Exception e)
             {
-                Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {e.Message}");
+                lock(this)
+                {
+                    Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {e.Message}");
+                    foreach(var h in ctxt.Response.Headers.Headers.Where(h => h.Key.Contains("DevProxy")))
+                    {
+                        Console.WriteLine($" {h.Key}: {h.Value.Value}");
+                    }
+                }
             }
             finally
             {
                 if (logRequests)
                 {
-                    Console.WriteLine($"END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                    lock(this)
+                    {
+                        Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
+                        var internalHeaders = args?.HttpClient?.Response?.Headers?.Headers?.Where(h => h.Key.Contains("DevProxy"));
+                        if (internalHeaders != null)
+                        {
+                            foreach(var h in internalHeaders)
+                            {
+                                Console.WriteLine($" {h.Key}: {h.Value.Value}");
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -393,7 +430,7 @@ namespace DevProxy
             return new ExternalProxy(proxyUrl.Host, proxyUrl.Port, user, password);
         }
 
-        private async Task InitRequestAsync(SessionEventArgsBase args)
+        private async Task<RequestContext> InitRequestAsync(SessionEventArgsBase args)
         {
             var url = new Uri(args.HttpClient.Request.Url);
 
@@ -404,9 +441,14 @@ namespace DevProxy
                 args.UserData = ctxt;
             }
 
+            if (!ctxt.IsHostRelevant)
+            {
+                return ctxt;
+            }
+
             if (logRequests)
             {
-                Console.WriteLine($"{ctxt.Request.Method} {ctxt.Request.Url}");
+                Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} {ctxt.Request.Method} {ctxt.Request.Url}");
             }
 
             if (!ctxt.IsAuthenticated)
@@ -427,6 +469,8 @@ namespace DevProxy
                     }
                 }
             }
+
+            return ctxt;
         }
 
         private static SemaphoreSlim _installRootLock = new SemaphoreSlim(1,1);
@@ -469,7 +513,7 @@ namespace DevProxy
                         await File.WriteAllBytesAsync(tmp, certBytes);
                         // string rootCert = "-----BEGIN CERTIFICATE-----\n" + Convert.ToBase64String(rootBytes) + "\n-----END CERTIFICATE-----";
                         await ProcessHelpers.RunAsync(opensslPath,
-                            $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword}",
+                            $"pkcs12 -in \"{tmp}\" -password pass:{tempPassword} -out \"{rootPem}\" -nokeys",
                             // $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword} -nokeys",
                             new[] {0});
                     }

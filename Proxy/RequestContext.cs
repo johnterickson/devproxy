@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Http;
@@ -15,11 +16,15 @@ namespace DevProxy
         public bool IsRequestAuthenticated = false;
         public List<(IProxyAuthPlugin, string)> AuthToProxyNotes = new List<(IProxyAuthPlugin, string)>();
         public SessionEventArgsBase Args;
+        public readonly bool IsHostRelevant;
 
         public RequestContext(SessionEventArgsBase args, DevProxy proxy)
         {
             this.Args = args;
             this.Proxy = proxy;
+
+            var url = new Uri(args.HttpClient.Request.Url);
+            this.IsHostRelevant = proxy.plugins.Any(p => p.IsHostRelevant(url.Host));
         }
 
         public void ReturnProxy407()
@@ -46,6 +51,10 @@ namespace DevProxy
         }
 
         public Request Request => Args.HttpClient.Request;
+        public Response Response => Args.HttpClient.Response;
+
+        public IRequestPlugin LastPluginCalled;
+        
         public bool IsConnectMethod => Request.Method == "CONNECT";
         public bool IsAuthenticated
         {

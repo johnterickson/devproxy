@@ -52,18 +52,22 @@ namespace DevProxy
             return base.BeforeRequestAsync(r);
         }
 
-        protected override async Task<Token> GetAuthorizationHeaderTokenAsync(PluginRequest r)
+        protected override Task<Token> GetAuthorizationHeaderTokenAsync(PluginRequest r)
         {
             if (r.Data != null)
             {
-                return r.Data;
+                return Task.FromResult(r.Data);
             }
 
             if (_registries.TryGetValue(r.Request.Host, out var registry) && registry.MostRecentSuccessfulScope != null)
             {
                 if (registry.ScopedATs.TryGetValue(registry.MostRecentSuccessfulScope, out string at))
                 {
-                    return new Token("ACR_AT_MostRecent", registry.AadAuthResult, at, new[] { registry.MostRecentSuccessfulScope });
+                    return Task.FromResult(new Token(
+                        "ACR_AT_MostRecent",
+                        registry.AadAuthResult,
+                        at,
+                        new[] { registry.MostRecentSuccessfulScope }));
                 }
             }
 

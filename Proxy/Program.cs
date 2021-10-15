@@ -92,6 +92,21 @@ namespace DevProxy
 
             var proxy = new DevProxy(config);
 
+            Func<string, Task<string>> sendIpcCommandAsync = async (string message) =>
+            {
+                try
+                {
+                    return await Ipc.SendAsync(proxy.pipeName, message, CancellationToken.None);
+                }
+                catch (TimeoutException)
+                {
+                    await Console.Error.WriteLineAsync("Timeout calling DevProxy over IPC.");
+                    await Console.Error.FlushAsync();
+                    Environment.Exit(1);
+                    throw new NotImplementedException("unreachable");
+                }
+            };
+
             foreach ((int i, string key, string value) in argKvps)
             {
                 switch (key)
@@ -105,7 +120,7 @@ namespace DevProxy
                                     { "process_id", Process.GetCurrentProcess().Id.ToString()}
                                 }
                             });
-                            string response = await Ipc.SendAsync(proxy.pipeName, message, CancellationToken.None);
+                            string response = await sendIpcCommandAsync(message);
                             if (response != "OK")
                             {
                                 throw new Exception(response);
@@ -126,7 +141,7 @@ namespace DevProxy
                             {
                                 Command = key.Substring(2),
                             });
-                            string response = await Ipc.SendAsync(proxy.pipeName, message, CancellationToken.None);
+                            string response = await sendIpcCommandAsync(message);
                             Console.Write(response);
                             return 0;
                         }
@@ -148,29 +163,58 @@ namespace DevProxy
             var currentExePath = Assembly.GetEntryAssembly().Location.Replace(".dll", ".exe");
             var currentExeWsl2Path = ProcessHelpers.ConvertToWSL2Path(currentExePath);
 
-            Console.WriteLine(@"For most apps:");
-            Console.WriteLine($"  $env:http_proxy = \"$({currentExePath} --get_proxy)\"");
-            Console.WriteLine(@"For windows git (via config):");
-            // Console.WriteLine($"  git config http.proxy http://user:{proxyPassword}@localhost:{proxyPort}");
-            Console.WriteLine($"  git config --add http.sslcainfo {pemForwardSlash}");
-            Console.WriteLine(@"For windows git (via env var):");
-            // Console.WriteLine($"  http_proxy=http://user:{proxyPassword}@localhost:{proxyPort}");
-            Console.WriteLine($"  GIT_PROXY_SSL_CAINFO={pemForwardSlash}");
+            string winHelp = @"
+For Windows
+-----------
+For most apps:
+$env:http_proxy = ""$({currentExePath} --get_proxy)""
+
+For git (via config):
+git config --add http.sslcainfo {pemForwardSlash}
+For git (via env var):
+$env:GIT_PROXY_SSL_CAINFO={pemForwardSlash}
+";
+            winHelp = winHelp.Trim()
+                .Replace("{currentExePath}", currentExePath)
+                .Replace("{pemForwardSlash}", pemForwardSlash);
+            Console.WriteLine(winHelp);
+            Console.WriteLine();
 
             if (proxy.wsl2hostIpInfo != null)
             {
                 string linuxPemPath = "/etc/ssl/certs/devproxy.pem";
                 //https://stackoverflow.com/questions/51176209/http-proxy-not-working
                 // curl requires lowercase http_proxy env var name
-                Console.WriteLine(@"For WSL2 (Ubuntu tested):");
-                Console.WriteLine($"  1. Once, install root cert");
-                Console.WriteLine($"       sudo apt install ca-certificates");
-                Console.WriteLine($"       sudo cp {pemFromWsl2} {linuxPemPath}");
-                Console.WriteLine($"       sudo update-ca-certificates --verbose --fresh | grep -i devproxy");
-                Console.WriteLine($"  2. Set envvars to enable");
-                Console.WriteLine($"       export http_proxy=$({currentExeWsl2Path} --get_wsl_proxy)");
-                Console.WriteLine($"       export https_proxy=$http_proxy");
-                Console.WriteLine($"       export NODE_EXTRA_CA_CERTS={linuxPemPath}");
+                string wslHelp= @"
+For WSL2 (Ubuntu tested)
+------------------------
+1. Once, install root cert:
+sudo apt install ca-certificates
+sudo cp {pemFromWsl2} {linuxPemPath}
+sudo update-ca-certificates --verbose --fresh | grep -i devproxy
+
+2. For each shell either set envvars to enable:
+export http_proxy=$({currentExeWsl2Path} --get_wsl_proxy)
+export https_proxy=$http_proxy
+export NODE_EXTRA_CA_CERTS={linuxPemPath}
+
+3. Or configure .bashrc to do it for you:
+devproxy_http_proxy=$({currentExeWsl2Path} --get_wsl_proxy)
+if [ $? -eq 0 ]; then
+  export http_proxy=$devproxy_http_proxy
+  export https_proxy=$devproxy_http_proxy
+  export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/devproxy.pem
+  echo 'DevProxy configured.'
+else
+  echo 'See above for error connecting to DevProxy.'
+fi
+";
+                wslHelp = wslHelp.Trim()
+                    .Replace("{pemFromWsl2}", pemFromWsl2)
+                    .Replace("{linuxPemPath}", linuxPemPath)
+                    .Replace("{currentExeWsl2Path}", currentExeWsl2Path);
+                Console.WriteLine(wslHelp);
+                Console.WriteLine();
             }
 
             Console.WriteLine(@"Started!");

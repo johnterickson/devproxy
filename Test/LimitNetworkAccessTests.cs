@@ -81,14 +81,14 @@ namespace DevProxy
         }
 
         [TestMethod]
-        public async Task Evil1Blocked()
+        public async Task Evil1DomainBlocked()
         {
             var response = await _env.authClient.GetAsync("https://blockeddomain1.com");
             Assert.AreEqual(HttpStatusCode.ProxyAuthenticationRequired, response.StatusCode);
         }
 
         [TestMethod]
-        public async Task Evil2Blocked()
+        public async Task Evil2DomainBlocked()
         {
             var response = await _env.authClient.GetAsync("https://blockeddomain2.com");
             Assert.AreEqual(HttpStatusCode.ProxyAuthenticationRequired, response.StatusCode);

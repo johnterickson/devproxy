@@ -32,9 +32,14 @@ namespace DevProxy
             _maxDuration = maxDuration;
             _baseSecret = baseSecret;
             _rotationRateSeconds = (int)rotationRate.TotalSeconds;
-            Update();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            for(DateTimeOffset start = now - maxDuration; start < now; start += rotationRate)
+            {
+                Update(start);
+            }
+            Update(now);
             _timer = new Timer(
-                _ => Update(),
+                _ => Update(DateTimeOffset.UtcNow),
                 null,
                 1000*_rotationRateSeconds,
                 1000*_rotationRateSeconds);
@@ -45,10 +50,9 @@ namespace DevProxy
             _timer.Dispose();
         }
 
-        private void Update()
+        private void Update(DateTimeOffset when)
         {
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            long seconds = now.ToUnixTimeSeconds();
+            long seconds = when.ToUnixTimeSeconds();
             seconds /= _rotationRateSeconds;
             seconds *= _rotationRateSeconds;
             DateTimeOffset baseTime = DateTimeOffset.FromUnixTimeSeconds(seconds);
@@ -56,7 +60,7 @@ namespace DevProxy
             {
                 var password = new Password(
                     HasherHelper.HashSecret(_baseSecret + baseTime.ToString("O")),
-                    now + _maxDuration);
+                    when + _maxDuration);
                 _proxyPasswords.Enqueue(password);
             }
         }

@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy.EventArguments;
 using Titanium.Web.Proxy.Models;
@@ -21,57 +19,31 @@ namespace DevProxy
 
         public sealed class RuleConfig
         {
-            public string host_regex {get;set;}
-            public string path_regex {get;set;}
+            public UrlFilter.Config filter {get;set;}
             public string action {get;set;}
         }
 
         public sealed class Rule
         {
             public readonly RuleAction Action;
+            public readonly UrlFilter UrlFilter;
 
-            public Rule(RuleAction action, string hostRegex, string pathRegex)
+            public Rule(RuleAction action, UrlFilter urlFilter)
             {
                 Action = action;
-                if (hostRegex != null)
-                {
-                    Host = new Regex(hostRegex, RegexOptions.Compiled);
-                }
-                if (!string.IsNullOrWhiteSpace(pathRegex) && pathRegex != ".*")
-                {
-                    Path = new Regex(pathRegex, RegexOptions.Compiled);
-                }
+                UrlFilter = urlFilter;
             }
-
-            public readonly Regex Host;
-            public readonly Regex Path;
         }
 
         internal static Rule[] ParseOptions(Dictionary<string, object> options)
         {
             if(options.TryGetValue("rules", out var rulesObject))
             {
-                List<RuleConfig> ruleConfigs;
-                if (rulesObject is JsonElement rulesElement &&
-                    rulesElement.ValueKind == JsonValueKind.Array)
-                {
-                    string rulesText = rulesElement.GetRawText();
-                    ruleConfigs = JsonSerializer.Deserialize<List<RuleConfig>>(rulesText);
-                }
-                else if(rulesObject is IEnumerable<RuleConfig> rulesEnumerable)
-                {
-                    ruleConfigs = rulesEnumerable.ToList();
-                }
-                else {
-                    throw new ArgumentException(
-                        "'rules' is wrong type: " + rulesObject.GetType().FullName);
-                }
-               
+                var ruleConfigs = rulesObject.ParseJsonArray<RuleConfig>();
                 return ruleConfigs.Select(r => 
                     new Rule(
                         Enum.Parse<RuleAction>(r.action, ignoreCase: true),
-                        r.host_regex,
-                        r.path_regex)).ToArray();
+                        new UrlFilter(r.filter))).ToArray();
             }
             else
             {
@@ -103,8 +75,8 @@ namespace DevProxy
         {
             string host = (new Uri(args.HttpClient.Request.Url)).Host;
 
-            var allowMatches = rules.Where(r => r.Action == RuleAction.Allow && r.Host.IsMatch(host)).ToList();
-            var blockMatches = rules.Where(r => r.Action == RuleAction.Block && r.Host.IsMatch(host)).ToList();
+            var allowMatches = rules.Where(r => r.Action == RuleAction.Allow && r.UrlFilter.IsHostMatch(host)).ToList();
+            var blockMatches = rules.Where(r => r.Action == RuleAction.Block && r.UrlFilter.IsHostMatch(host)).ToList();
 
             if (allowMatches.Count == 0 && blockMatches.Count == 0)
             {
@@ -113,23 +85,23 @@ namespace DevProxy
             
             if (allowMatches.Count == 0)
             {
-                var wholeHostBlock = blockMatches.FirstOrDefault(b => b.Path == null);
+                var wholeHostBlock = blockMatches.FirstOrDefault(b => b.UrlFilter.IsAnyPathMatch);
                 if (wholeHostBlock != null)
                 {
                     return Task.FromResult((
                         ProxyAuthPluginResult.Rejected, 
-                        $"{host}_blocked_by_rule_{wholeHostBlock.Host}/*."));
+                        $"{host}_blocked_by_rule_{wholeHostBlock.UrlFilter.Host}/*."));
                 }
             }
 
             if (blockMatches.Count == 0)
             {
-                var wholeHostAllow = allowMatches.FirstOrDefault(b => b.Path == null);
+                var wholeHostAllow = allowMatches.FirstOrDefault(b => b.UrlFilter.IsAnyPathMatch);
                 if (wholeHostAllow != null)
                 {
                     return Task.FromResult((
                         ProxyAuthPluginResult.NoOpinion, 
-                        $"{host}_allowed_by_{wholeHostAllow.Host}/*."));
+                        $"{host}_allowed_by_{wholeHostAllow.UrlFilter.Host}/*."));
                 }
             }
             
@@ -143,12 +115,7 @@ namespace DevProxy
             var url = new Uri(request.Request.Url);
             foreach (var rule in rules)
             {
-                if (!rule.Host.IsMatch(url.Host))
-                {
-                    continue;
-                }
-
-                if (rule.Path != null && !rule.Path.IsMatch(url.PathAndQuery))
+                if(!rule.UrlFilter.IsUriMatch(url))
                 {
                     continue;
                 }
@@ -162,7 +129,7 @@ namespace DevProxy
                 else if (rule.Action == RuleAction.Block)
                 {
                     request.Args.GenericResponse(
-                        $"Blocked by {rule.Host} / {rule.Path}",
+                        $"Blocked by {rule.UrlFilter.Host} / {rule.UrlFilter.Path}",
                         HttpStatusCode.UnavailableForLegalReasons,
                         new HttpHeader[] {
                             new HttpHeader(HeaderName, CreateHeaderValue(rule))
@@ -189,7 +156,7 @@ namespace DevProxy
 
         public override bool IsHostRelevant(string host)
         {
-            return rules.Any(r => r.Host.IsMatch(host));
+            return rules.Any(r => r.UrlFilter.IsHostMatch(host));
         }
     }
 }

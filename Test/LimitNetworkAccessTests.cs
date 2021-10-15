@@ -26,25 +26,38 @@ namespace DevProxy
                             new RuleConfig()
                             {
                                 action = RuleAction.Allow.ToString(),
-                                host_regex = ".*dev\\.azure\\.com",
-                                path_regex = "/mseng/.*"
+                                filter = new UrlFilter.Config()
+                                {
+                                    host_regex = ".*dev\\.azure\\.com",
+                                    path_regex = "/mseng/.*"
+                                }
                             },
                             new RuleConfig()
                             {
                                 action = RuleAction.Block.ToString(),
-                                host_regex = ".*dev\\.azure\\.com",
-                                path_regex = ".*"
+
+                                filter = new UrlFilter.Config()
+                                {
+                                    host_regex = ".*dev\\.azure\\.com",
+                                    path_regex = ".*"
+                                }
                             },
                             new RuleConfig()
                             {
                                 action = RuleAction.Block.ToString(),
-                                host_regex = "blockeddomain1\\.com",
-                                path_regex = ".*"
+                                filter = new UrlFilter.Config()
+                                {
+                                    host_regex = "blockeddomain1\\.com",
+                                    path_regex = ".*"
+                                }
                             },
                             new RuleConfig()
                             {
                                 action = RuleAction.Block.ToString(),
-                                host_regex = "blockeddomain2\\.com",
+                                filter = new UrlFilter.Config()
+                                {
+                                    host_regex = "blockeddomain2\\.com",
+                                }
                             },
                         }
                     }
@@ -97,20 +110,21 @@ namespace DevProxy
         [TestMethod]
         public void ParseConfig()
         {
-            string configText =
-                @"{" +
-                @" ""plugins"": [{" +
-                @"   ""class_name"": """ + nameof(LimitNetworkAccessPlugin) + @"""," +
-                @"   ""options"": {" + 
-                @"    ""rules"": [" + 
-                @"      { ""action"": ""allow"", ""host_regex"": "".*dev.azure.com"", ""path_regex"": ""/mseng/.*""}," +
-                @"      { ""action"": ""block"", ""host_regex"": "".*"", ""path_regex"": "".*""}" +
-                @"    ]" +
-                @"   }" +
-                @" }]" + 
-                @"}";
+            string configText = @"
+{
+ ""plugins"": [{
+   ""class_name"": ""LimitNetworkAccessPlugin"",
+   ""options"": {
+    ""rules"": [
+      { ""action"": ""allow"", filter: { ""host_regex"": "".*dev.azure.com"", ""path_regex"": ""/mseng/.*""} },
+      { ""action"": ""block"", filter: { ""host_regex"": "".*"", ""path_regex"": "".*""} }
+    ]
+   }
+ }]
+}";        
+            configText = configText.Trim().Replace("LimitNetworkAccessPlugin", nameof(LimitNetworkAccessPlugin));
             var config = JsonSerializer.Deserialize<Configuration>(configText);
-            using(var proxy = new DevProxy(config)) 
+            using (var proxy = new DevProxy(config))
             {
 
             }

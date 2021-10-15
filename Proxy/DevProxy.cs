@@ -26,18 +26,17 @@ namespace DevProxy
         {
             this.configuration = configuration;
             this.configuration.proxy = this.configuration.proxy ?? new ProxyConfiguration();
-            
+
             this.pipeName = configuration.proxy.ipcPipeName ?? "devproxy";
             this.ipcServer = new Ipc(pipeName, HandleIpc);
 
             this.proxyPort = configuration.proxy.port ?? 8888;
-            this.logRequests = configuration.proxy.log_requests ?? false;
 
             string password_type = configuration.proxy.password_type ?? "rotating";
 
             this.ListenToWSL2 = configuration.proxy.listen_to_wsl2 ?? true;
 
-            switch(password_type)
+            switch (password_type)
             {
                 case "fixed":
                     this.Passwords = new FixedProxyPassword(this.configuration.proxy.fixed_password.value);
@@ -49,13 +48,13 @@ namespace DevProxy
                         {
                             base_secret = "SomethingBetterHere",
                             generate_new_every_seconds = 3600,
-                            passwords_lifetime_seconds = 24*3600,
+                            passwords_lifetime_seconds = 24 * 3600,
                         };
                     }
                     var config = configuration.proxy.rotating_password;
 
                     this.Passwords = new RotatingPassword(
-                        maxDuration: TimeSpan.FromSeconds(config.passwords_lifetime_seconds ?? 24*3600),
+                        maxDuration: TimeSpan.FromSeconds(config.passwords_lifetime_seconds ?? 24 * 3600),
                         baseSecret: config.base_secret,
                         rotationRate: TimeSpan.FromSeconds(config.generate_new_every_seconds ?? 3600)
                     );
@@ -74,8 +73,8 @@ namespace DevProxy
                 this.proxy.UpStreamHttpProxy = ParseProxy(upstreamHttpProxy);
             }
 
-            string upstreamHttpsProxy = 
-                configuration.proxy.upstream_https_proxy 
+            string upstreamHttpsProxy =
+                configuration.proxy.upstream_https_proxy
                     ?? Environment.GetEnvironmentVariable("https_proxy");
             if (!string.IsNullOrEmpty(upstreamHttpsProxy))
             {
@@ -108,7 +107,7 @@ namespace DevProxy
 
             if (this.ListenToWSL2)
             {
-                foreach(var i in NetworkInterface.GetAllNetworkInterfaces())
+                foreach (var i in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     if (i.Name == "vEthernet (WSL)")
                     {
@@ -120,7 +119,8 @@ namespace DevProxy
                 }
             }
 
-            Action<IPAddress> createEndpoint = (address) => {
+            Action<IPAddress> createEndpoint = (address) =>
+            {
                 var endpoint = new ExplicitProxyEndPoint(address, proxyPort, decryptSsl: true);
                 endpoint.BeforeTunnelConnectRequest += OnBeforeTunnelConnectRequestAsync;
                 endpoint.BeforeTunnelConnectResponse += OnBeforeTunnelConnectResponseAsync;
@@ -134,33 +134,57 @@ namespace DevProxy
                 createEndpoint(wsl2hostIpInfo.Address);
             }
 
-            if (this.configuration.plugins != null)
+            if (configuration.proxy.log_requests ?? false)
             {
-                foreach(var pluginConfig in this.configuration.plugins)
+                var rule = new LoggingPlugin.RuleConfig()
                 {
-                    string className = $"{nameof(DevProxy)}.{pluginConfig.class_name}";
-                    
-                    var pluginFactoryObject = Activator.CreateInstance(
-                        Assembly.GetExecutingAssembly().FullName,
-                        className).Unwrap();
+                    filter = new UrlFilter.Config(),
+                    target = LoggingPlugin.Target.Console.ToString(),
+                };
 
-                    bool created = false;
-                    if (pluginFactoryObject is IRequestPluginFactory pluginFactory)
+                this.configuration.plugins.Add(new PluginConfiguration()
+                {
+                    class_name = nameof(LoggingPlugin),
+                    options = new Dictionary<string, object>()
                     {
-                        this.plugins.Add(pluginFactory.Create(pluginConfig.options));
-                        created = true;
+                        {"rules", new []{rule}}
                     }
+                });
+            }
 
-                    if (pluginFactoryObject is IProxyAuthPluginFactory authPluginFactory)
-                    {
-                        this.authPlugins.Add(authPluginFactory.Create(this.Passwords, pluginConfig.options));
-                        created = true;
-                    }
-                    
-                    if(!created)
-                    {
-                        throw new ArgumentException($"{pluginFactoryObject.GetType().FullName} is not a pluginfactory.");
-                    }
+            foreach (var pluginConfig in this.configuration.plugins)
+            {
+                string className = $"{nameof(DevProxy)}.{pluginConfig.class_name}";
+
+                var pluginFactoryObject = Activator.CreateInstance(
+                    Assembly.GetExecutingAssembly().FullName,
+                    className).Unwrap();
+
+                object pluginObject = null;
+
+                if (pluginFactoryObject is IRequestPluginFactory pluginFactory)
+                {
+                    pluginObject = pluginFactory.Create(pluginConfig.options);
+                }
+
+                if (pluginObject == null && pluginFactoryObject is IProxyAuthPluginFactory authPluginFactory)
+                {
+                    pluginObject = authPluginFactory.Create(this.Passwords, pluginConfig.options);
+                }
+
+                if (pluginObject is IRequestPlugin rp)
+                {
+                    this.plugins.Add(rp);
+                }
+
+                if (pluginObject is IProxyAuthPlugin ap)
+                {
+                    this.authPlugins.Add(ap);
+                }
+
+                if (pluginObject == null)
+                {
+                    throw new ArgumentException($"{pluginFactoryObject.GetType().FullName} is not a pluginfactory.");
                 }
             }
         }
@@ -176,9 +200,7 @@ namespace DevProxy
         public readonly int proxyPort;
 
         public readonly bool ListenToWSL2;
-        public UnicastIPAddressInformation wsl2hostIpInfo {get; private set;}
-
-        public readonly bool logRequests;
+        public UnicastIPAddressInformation wsl2hostIpInfo { get; private set; }
 
         public readonly string upstreamHttpProxy;
         public readonly string upstreamHttpsProxy = Environment.GetEnvironmentVariable("https_proxy");
@@ -306,10 +328,7 @@ namespace DevProxy
                 throw new UnauthorizedAccessException();
             }
             ctxt.AddAuthNotesToResponse();
-            if (logRequests)
-            {
-                Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
-            }
+
             return Task.CompletedTask;
         }
 
@@ -369,7 +388,7 @@ namespace DevProxy
                 {
                     foundLastPlugin |= ctxt.LastPluginCalled == plugin;
 
-                    if(!foundLastPlugin)
+                    if (!foundLastPlugin)
                     {
                         continue;
                     }
@@ -383,32 +402,7 @@ namespace DevProxy
             }
             catch (Exception e)
             {
-                lock(this)
-                {
-                    Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {e.Message}");
-                    foreach(var h in ctxt.Response.Headers.Headers.Where(h => h.Key.Contains("DevProxy")))
-                    {
-                        Console.WriteLine($" {h.Key}: {h.Value.Value}");
-                    }
-                }
-            }
-            finally
-            {
-                if (logRequests)
-                {
-                    lock(this)
-                    {
-                        Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {args.HttpClient?.Response?.StatusCode}");
-                        var internalHeaders = args?.HttpClient?.Response?.Headers?.Headers?.Where(h => h.Key.Contains("DevProxy"));
-                        if (internalHeaders != null)
-                        {
-                            foreach(var h in internalHeaders)
-                            {
-                                Console.WriteLine($" {h.Key}: {h.Value.Value}");
-                            }
-                        }
-                    }
-                }
+                Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} END  {args.HttpClient?.Request?.Method} {args.HttpClient?.Request?.Url} {e.Message}");
             }
         }
 
@@ -446,11 +440,6 @@ namespace DevProxy
                 return ctxt;
             }
 
-            if (logRequests)
-            {
-                Console.WriteLine($"{DateTimeOffset.UtcNow.ToString("s")} {ctxt.Request.Method} {ctxt.Request.Url}");
-            }
-
             if (!ctxt.IsAuthenticated)
             {
                 foreach (var plugin in authPlugins)
@@ -473,7 +462,7 @@ namespace DevProxy
             return ctxt;
         }
 
-        private static SemaphoreSlim _installRootLock = new SemaphoreSlim(1,1);
+        private static SemaphoreSlim _installRootLock = new SemaphoreSlim(1, 1);
 
         private async Task EnsureRootCertIsInstalledAsync()
         {
@@ -500,7 +489,7 @@ namespace DevProxy
 
                 if (!File.Exists(rootPem))
                 {
-                    (_, string stdout, _) = await ProcessHelpers.RunAsync("where.exe", "git.exe", new[] {0});
+                    (_, string stdout, _) = await ProcessHelpers.RunAsync("where.exe", "git.exe", new[] { 0 });
                     string gitPath = stdout;
                     gitPath = Path.GetDirectoryName(gitPath);
                     gitPath = Path.GetDirectoryName(gitPath);
@@ -515,7 +504,7 @@ namespace DevProxy
                         await ProcessHelpers.RunAsync(opensslPath,
                             $"pkcs12 -in \"{tmp}\" -password pass:{tempPassword} -out \"{rootPem}\" -nokeys",
                             // $"pkcs12 -in \"{tmp}\" -out \"{rootPem}\" -password pass:{tempPassword} -nokeys",
-                            new[] {0});
+                            new[] { 0 });
                     }
                     catch
                     {
@@ -534,7 +523,7 @@ namespace DevProxy
             }
         }
 
-        private static SemaphoreSlim _firewallLock = new SemaphoreSlim(1,1);
+        private static SemaphoreSlim _firewallLock = new SemaphoreSlim(1, 1);
         private async Task OpenFirewallToWSL2Async()
         {
             string ruleName = $"DevProxy listening to {proxyPort} from WSL2 {wsl2hostIpInfo.Address}/{wsl2hostIpInfo.PrefixLength}";
@@ -544,17 +533,17 @@ namespace DevProxy
                 (_, string existingRule, _) = await ProcessHelpers.RunAsync(
                     "powershell",
                     $"-Command \"Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue\"",
-                    new [] {0, 1}
+                    new[] { 0, 1 }
                 );
-                
+
                 if (!existingRule.Contains(ruleName))
                 {
                     await ProcessHelpers.RunAsync(
                         "powershell",
                         $"-Command \"New-NetFireWallRule -DisplayName '{ruleName}' -Direction Inbound -LocalPort {proxyPort} -Action Allow -Protocol TCP " +
-                        $"-LocalAddress '{wsl2hostIpInfo.Address}' " + 
+                        $"-LocalAddress '{wsl2hostIpInfo.Address}' " +
                         $"-RemoteAddress '{wsl2hostIpInfo.Address}/{wsl2hostIpInfo.PrefixLength}'\"",
-                        new [] {0},
+                        new[] { 0 },
                         admin: true
                     );
                 }

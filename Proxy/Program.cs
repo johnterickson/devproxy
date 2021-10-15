@@ -167,7 +167,7 @@ namespace DevProxy
 For Windows
 -----------
 For most apps:
-$env:http_proxy = ""$({currentExePath} --get_proxy)""
+$env:http_proxy = $env:https_proxy = ""$({currentExePath} --get_proxy)""
 
 For git (via config):
 git config --add http.sslcainfo {pemForwardSlash}

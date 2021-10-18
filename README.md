@@ -29,6 +29,8 @@ For WSL2 (Ubuntu tested):
 ```
 
 Example using proxy from powershell:
+* AuthToProxyPlugins: [`ProxyAuthorizationHeaderProxyAuthPlugin`]
+* RequestPlugins: [`AzureDevOpsAuthRequestPlugin`]
 ```
 PS C:\Users\jerick> $env:HTTPS_PROXY = "http://$(D:\src\DevProxy\bin\Debug\net5.0\win10-x64\publish\DevProxy.exe --get_token)@localhost:8888"
 PS C:\Users\jerick> curl.exe --ssl-no-revoke https://dev.azure.com/mseng  -D headers.txt -o out.txt; findstr DevProxy headers.txt
@@ -38,6 +40,8 @@ X-DevProxy-AzureDevOpsAuthPlugin-TokenSHA512: 12C88899
 ```
 
 Example using proxy from WSL2:
+* AuthToProxyPlugins: [`ProxyAuthorizationHeaderProxyAuthPlugin`]
+* RequestPlugins: [`AzureDevOpsAuthRequestPlugin`]
 ```
 john@jerick-hpz440:~$ export HTTP_PROXY=http://$(/mnt/d/src/DevProxy/bin/Debug/net5.0/win10-x64/publish/DevProxy.exe --get_token)@172.28.160.1:8888
 john@jerick-hpz440:~$ export HTTPS_PROXY=$HTTP_PROXY
@@ -48,16 +52,45 @@ X-DevProxy-AzureDevOpsAuthPlugin-TokenSHA512: F22C0ACA
 ```
 
 Example of automatically creating minimal SAS signatures for each request (set `STORAGE_CONNECTION_STRING` before starting proxy):
+* AuthToProxyPlugins: [`ProxyAuthorizationHeaderProxyAuthPlugin`]
+* RequestPlugins: [`AzureBlobSasRequestPlugin`]
 ```
 john@jerick-hpz440:~$ curl -v -X PUT -d "From DevProxy: Hello, Azure Storage! $(date)"$'\n' -H "x-ms-blob-type: BlockBlob" https://jerickbuildcache.blob.core.windows.net/devproxytest/hello.txt 2>&1 | grep DevProxy
 *  issuer: CN=DevProxy for jerick
-< X-DevProxy-AuthToProxy-AuthorizationHeaderProxyAuthPlugin: NoOpinion_NoHeader=Authorization
 < X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=07A6974FB90B91F566F502033A4B4BA7
 < X-DevProxy-AzureBlobSasRequestPlugin-SAS: racwdxltmei_2021-10-13T20:45:44
 john@jerick-hpz440:~$ curl -v https://jerickbuildcache.blob.core.windows.net/devproxytest/hello.txt 2>&1 | grep DevProxy
 *  issuer: CN=DevProxy for jerick
-< X-DevProxy-AuthToProxy-AuthorizationHeaderProxyAuthPlugin: NoOpinion_NoHeader=Authorization
 < X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=07A6974FB90B91F566F502033A4B4BA7
 < X-DevProxy-AzureBlobSasRequestPlugin-SAS: r_2021-10-13T20:46:01
 From DevProxy: Hello, Azure Storage! Wed Oct 13 13:40:44 PDT 2021
+```
+
+Example of both authenticating to Azure DevOps via AAD and then caching the download of packages:
+* AuthToProxyPlugins: [`ProxyAuthorizationHeaderProxyAuthPlugin`]
+* RequestPlugins: [`AzureDevOpsAuthRequestPlugin`,`BlobStoreCacheRequestPlugin`]
+```
+curl -v -L https://outlookweb.pkgs.visualstudio.com/_packaging/owa-npm/npm/registry/@fluentui/keyboard-key/-/keyboard-key-0.2.17.tgz -o keyboard.tgz
+< HTTP/1.1 303 See Other
+< Location: https://9bgvsblobprodeus2185.vsblob.vsassets.io/b-c8701bf2aece44c9baedcf8a12ad5bd3/60FF07D444210A44BD5062A4113A2BAFF6DEB8718C8FA82756DCF0B9A4D931F700.blob?[redacted]
+< X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=32A0F8A39718B9774B36A8AA6CF5D14A
+< X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenNotes: AAD
+< X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenSHA512: 7E1D09E8D6F0F9876E97424CBF2F2069
+> CONNECT 9bgvsblobprodeus2185.vsblob.vsassets.io:443 HTTP/1.1
+> GET /b-c8701bf2aece44c9baedcf8a12ad5bd3/60FF07D444210A44BD5062A4113A2BAFF6DEB8718C8FA82756DCF0B9A4D931F700.blob?[redacted]
+< X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: Authenticated_PasswordMatch_SHA512=32A0F8A39718B9774B36A8AA6CF5D14A
+< X-DevProxy-BlobStoreCacheRequestPlugin-Cache: HIT
+```
+
+Example using process tree to authenticate:
+* AuthToProxyPlugins: [`ProcessTreeProxyAuthPlugin`]
+* RequestPlugins: [`AzureDevOpsAuthRequestPlugin`]
+```
+echo http_proxy=%http_proxy% https_proxy=%https_proxy% && \src\DevProxy\Proxy\bin\Debug\net5.0\DevProxy.exe --run curl.exe -v --ssl-no-revoke https://dev.azure.com/mseng 2>&1 | findstr DevProxy
+http_proxy=http://localhost:8888 https_proxy=http://localhost:8888
+< X-DevProxy-AuthToProxy-AuthorizationHeaderProxyAuthPlugin: NoOpinion_NoHeader=Authorization
+< X-DevProxy-AuthToProxy-ProxyAuthorizationHeaderProxyAuthPluginInstance: NoOpinion_NoHeader=Proxy-Authorization
+< X-DevProxy-AuthToProxy-ProcessTreeProxyAuthPlugin: Authenticated_RootProcessId=21872
+< X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenNotes: AAD
+< X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenSHA512: 7E1D09E8D6F0F9876E97424CBF2F2069
 ```

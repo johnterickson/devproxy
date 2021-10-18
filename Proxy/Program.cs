@@ -35,6 +35,7 @@ namespace DevProxy
 
             foreach ((int i, string key, string value) in argKvps)
             {
+                bool ignoreOtherArgs = false;
                 switch (key)
                 {
                     case "--port":
@@ -59,13 +60,20 @@ namespace DevProxy
                             value = value
                         };
                         break;
-                    case "--get_token":
                     case "--run":
+                        ignoreOtherArgs = true;
+                        break;
+                    case "--get_token":
                     case "--get_proxy":
                     case "--get_wsl_proxy":
                         break;
                     default:
                         throw new ArgumentException($"Unknown argument: `{key}={value}`");
+                }
+
+                if (ignoreOtherArgs)
+                {
+                    break;
                 }
             }
 

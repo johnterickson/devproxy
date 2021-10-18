@@ -22,7 +22,7 @@ namespace DevProxy
             var authHeader = args.HttpClient.Request.Headers.GetFirstHeader(HeaderName);
             if (authHeader == null)
             {
-                return Task.FromResult((ProxyAuthPluginResult.NoOpinion, $"NoHeader={HeaderName}"));
+                return Task.FromResult((ProxyAuthPluginResult.NoOpinion, $"NoHeader"));
             }
 
             string user;

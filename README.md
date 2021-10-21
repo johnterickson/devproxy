@@ -1,3 +1,5 @@
+[Presentation PDF](https://drive.google.com/file/d/1_3avd39YP3TkJepxXKCKz9biPSXmB0j-/view?usp=sharing)
+
 Instead of putting caching, auth, etc into every single tool, put it in a proxy and route the tools through it.  See also: https://github.com/zjrunner/prism
 
 Since we don't want just anybody to be able to route traffic through this proxy and act with your auth, we need to limit access to this proxy itself.

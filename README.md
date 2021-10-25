@@ -96,3 +96,8 @@ http_proxy=http://localhost:8888 https_proxy=http://localhost:8888
 < X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenNotes: AAD
 < X-DevProxy-AzureDevOpsAuthRequestPlugin-TokenSHA512: 7E1D09E8D6F0F9876E97424CBF2F2069
 ```
+
+Revoking all active PATs:
+```
+curl "https://vssps.dev.azure.com/mseng/_apis/tokens/pats?displayFilterOption=active&api-version=6.1-preview.1" | jq .patTokens[].authorizationId | xargs -I '{}' curl -X DELETE "https://vssps.dev.azure.com/mseng/_apis/tokens/pats?authorizationId={}&api-version=6.1-preview.1"
+```

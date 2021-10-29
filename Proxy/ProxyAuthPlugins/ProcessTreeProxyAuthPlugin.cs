@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Titanium.Web.Proxy.EventArguments;
 
@@ -15,7 +16,7 @@ namespace DevProxy
 
         public async Task<(ProxyAuthPluginResult, string)> BeforeRequestAsync(SessionEventArgsBase args)
         {
-            var connections = await ProcessTcpConnection.FindConnectionsAsync();
+            var connections = ProcessTcpConnection.FindAllConnections(AddressFamily.InterNetwork);
             var connection = connections.FirstOrDefault(c =>
                 c.LocalEndpoint.Address.Equals(args.ClientRemoteEndPoint.Address) &&
                 c.LocalEndpoint.Port == args.ClientRemoteEndPoint.Port);

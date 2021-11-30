@@ -117,6 +117,11 @@ namespace DevProxy
                         break;
                     }
                 }
+
+                if (wsl2hostIpInfo == null)
+                {
+                    Console.WriteLine("Could not find WSL2 endpoint...");
+                }
             }
 
             Action<IPAddress> createEndpoint = (address) =>
